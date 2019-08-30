@@ -7,6 +7,7 @@ from odbAccess import *
 import pickle
 from abaqusConstants import *
 import time
+from cpex.data_io import cpex_to_hdf5
 
 
 class Lattice():
@@ -54,9 +55,17 @@ class ScrapeODB(Lattice):
         self.eSDV149 = eSDV149
         self.ro1, self.ro2, self.ro3 = ro1, ro2, ro3
         
-    def save_to_hdf5(self, fpath):
-        pass
-        
+
+    def save_to_hdf5(self, fpath, overwrite=False):
+        """ Save data back to hdf5 file format.
+
+        Saves analyzed information and the raw, scraped data.
+
+        Args:
+            fpath (str): Abs. path for new file
+            overwrite (bool): Overwrite file if it already exists
+        """
+        cpex_to_hdf5(fpath, self, overwrite)        
         
 
 
