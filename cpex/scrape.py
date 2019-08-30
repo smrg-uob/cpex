@@ -32,56 +32,47 @@ class ScrapeODB(Lattice):
         # Create empy arrays to store data
         d_shape = (len(self.num_grains), len(self.num_frames))
         
-        s = [np.empty(d_shape),]*6
-        e = [np.empty(d_shape),]*6
-        lat = [np.empty(d_shape),]*6
-        rot = [np.empty(d_shape),]*3
-        dims = [np.empty(d_shape),]*3
+        s = np.empty((6,) + d_shape)
+        e = np.empty((6,) + d_shape)
+        lat = np.empty((6,) + d_shape)
+        rot = np.empty((3,) + d_shape)
+        dims = np.empty((3,) + d_shape)
         v = np.empty(d_shape)
 
         
         # Open each frame in turn and extract data
-        for fidx, frame in enumerate(self.frames):
-            
+        for fidx, frame in enumerate(self.frames):            
             sc = scrape_frame(frame, self.num_grains, self.N)
-            
-            for i in range(6):
-                s[i][fidx, :] = sc[0][i]
-                e[i][fidx, :] = sc[1][i]
-                lat[i][fidx, :] = sc[2][i]
-                
-            for i in range(3):
-                dims[i][fidx, :] = sc[3][i]
-                rot[i][fidx, :] = sc[4][i]
-            
-            v[fidx, :] = sc[5]
 
-            
-            
-        self.sxx, self.syy, self.szz, self.sxy, self.syz, self.sxz = s
-        self.exx, self.eyy, self.ezz, self.exy, self.eyz, self.exz = e
-        self.latxx, self.latyy, self.latzz, self.latxy, self.latyz, self.latxz = lat        
-        self.x, self.y, self.z = dims
-        self.phi1, self.phi2, self.phi3, rot
+            s[:, :, fidx] = sc[0]
+            e[:, :, fidx] = sc[1]
+            lat[:, :, fidx] = sc[2]
+            rot[:, :, fidx] = sc[3]
+            dims[:, :, fidx] = sc[4]
+            v[:, fidx] = sc[5]
+
+        self.s = s
+        self.e = e
+        self.lat = lat        
+        self.dims = dims
+        self.rot = rot
         self.v = v  
         
 
 
-    
-
 def scrape_frame(frame, num_grains, N):
     
-    lat_SDV_nums = range((N * 12 + 4), (N * 12 + 4) + 6)
-    rot_SDV_nums = range((N * 34 + 3), (N * 34 + 3) + 3)
+    lat_SDV_nums = range((N * 12 + 4), (N * 12 + 4) + 6 + 1)
+    rot_SDV_nums = range((N * 34 + 3), (N * 34 + 3) + 3 + 1)
     
-    s = [np.empty((len(num_grains))),]*6    
-    e = [np.empty((len(num_grains))),]*6  
+    s = np.empty((6,len(num_grains)))
+    e = np.empty((6,len(num_grains)))  
     
-    lat = [np.empty((len(num_grains))),]*6
-    rot = [np.empty((len(num_grains))),]*3
+    lat = np.empty((6,len(num_grains)))
+    rot = np.empty((3,len(num_grains)))
     
     v = np.empty((len(num_grains)))
-    dims = [np.empty((len(num_grains))),]*3
+    dims = np.empty((3,len(num_grains)))
     
     data_fo = frame.fieldOutputs
 
@@ -107,47 +98,36 @@ def scrape_frame(frame, num_grains, N):
         coords = coords_.getSubset(region=myInstance2,position=INTEGRATION_POINT,elementType='C3D8').values
         
         # Lattice results exx, eyy, ezz, exy, exz, eyz
-        latticeSDV = [i.getSubset(region=myInstance2,position=INTEGRATION_POINT,elementType='C3D8').values for i in latticeSDV_]
+        latSDV = [i.getSubset(region=myInstance2,position=INTEGRATION_POINT,elementType='C3D8').values for i in latticeSDV_]
         rotSDV = [i.getSubset(region=myInstance2,position=INTEGRATION_POINT,elementType='C3D8').values for i in rotSDV_]
         
         # Iterate over total number of elements and sum the strain/unit volume
-        s_v = [0, ] * 6
-        e_v = [0, ] * 6
-        lattice_v = [0, ] * 6
-        rot_v = [0, ] * 3
-        coords_v = [0, ] * 3
+        s_v = np.zeros((6,))
+        e_v = np.zeros((6,))
+        lat_v = np.zeros((6,))
+        rot_v = np.zeros((3,))
+        coords_v = np.zeros((3,))
         vv = 0
 
         for ip in range(numElements*8):
             vv_ = Volume[ip].data
             
-            s_v = [s_v[i-1] + stress[ip].data[i] * vv_ for i in range(1, 7)]
-            e_v = [e_v[i-1] + strain[ip].data[i] * vv_ for i in range(1, 7)]
-            coords_v = [coords_v[i-1] + coords[ip].data[i] * vv_ for i in range(1, 4)]
-            
-            
-            lattice_v = [lattice_v[idx] + i[ip].data * vv_ for idx, i in enumerate(latticeSDV)]
-            rot_v = [rot_v[idx] + i[ip].data * vv_ for idx, i in enumerate(rotSDV)]
+            s_v += np.array([stress[ip].data[i] * vv_ for i in range(1, 7)])
+            e_v += np.array([strain[ip].data[i] * vv_ for i in range(1, 7)])
+            coords_v += np.array([coords[ip].data[i] * vv_ for i in range(1, 4)])
+
+            lat_v += np.array([i[ip].data * vv_ for idx, i in enumerate(latSDV)])
+            rot_v += np.array([i[ip].data * vv_ for idx, i in enumerate(rotSDV)])
             
             vv += Volume[ip].data
         
-        s_v = [s_v[i] / vv for i in range(6)]
-        e_v = [e_v[i] / vv for i in range(6)]
-        lattice_v = [lattice_v[i] / vv for i in range(6)]
-        rot_v = [rot_v[i] / vv for i in range(3)]
-        coords_v = [coords_v[i] / vv for i in range(3)]
-        vv = 0
 
         # Unpack values
-        for i in range(6):
-            s[i][idx] = s_v[i]
-            e[i][idx] = e_v[i]
-            lat[i][idx] = lattice_v[i]
-            
-        for i in range(3):
-            dims[i][idx] = coords_v[i]
-            rot[i][idx] = rot_v[i]
-        
+        s[:,idx] = s_v / vv
+        e[:,idx] = e_v  / vv
+        lat[:,idx] = lat_v / vv            
+        dims[:,idx] = coords_v / vv
+        rot[:,idx] = rot_v / vv
         v[idx] = vv
         
     return  (s, e, lat, dims, rot, v)
