@@ -31,32 +31,39 @@ class ScrapeODB(Lattice):
 
         # Create empy arrays to store data
         d_shape = (len(self.num_grains), len(self.num_frames))
-        sxx, syy, sxy = [np.empty(d_shape),]*3 
-        exx, eyy, exy = [np.empty(d_shape),]*3 
-        ro1, ro2, ro3 = [np.empty(d_shape),]*3 
-
+        
+        s = [np.empty(d_shape),]*6
+        e = [np.empty(d_shape),]*6
+        lat = [np.empty(d_shape),]*6
+        rot = [np.empty(d_shape),]*3
+        dims = [np.empty(d_shape),]*3
         v = np.empty(d_shape)
-        eSDV149 = np.empty(d_shape) # what is this?
+
         
         # Open each frame in turn and extract data
         for fidx, frame in enumerate(self.frames):
             
             sc = scrape_frame(frame, self.num_grains, self.N)
             
-            sxx[fidx,:], syy[fidx,:], szz[fidx,:] = sc[0], sc[1], sc[2]
-            sxy[fidx,:], syz[fidx,:], sxz[fidx,:] = sc[3], sc[4], sc[5]
+            for i in range(6):
+                s[i][fidx, :] = sc[0][i]
+                e[i][fidx, :] = sc[1][i]
+                lat[i][fidx, :] = sc[2][i]
+                
+            for i in range(3):
+                dims[i][fidx, :] = sc[3][i]
+                rot[i][fidx, :] = sc[4][i]
             
-     ############ Finish       
-#            exx[fidx,:], eyy[fidx,:], exy[fidx,:] = sc[3], sc[4], sc[5]
-#            v[fidx,:] = sc[6]
-#            eSDV149[fidx,:] = sc[7]
-#            ro1[fidx,:], ro2[fidx,:], ro3[fidx,:] = sc[8], sc[9], sc[10]
+            v[fidx, :] = sc[5]
+
             
-        self.sxx, self.syy, self.sxy = sxx, syy, sxy
-        self.exx, self.eyy, self.exy = sxx, syy, sxy
-        self.v = v
-        self.eSDV149 = eSDV149
-        self.ro1, self.ro2, self.ro3 = ro1, ro2, ro3     
+            
+        self.sxx, self.syy, self.szz, self.sxy, self.syz, self.sxz = s
+        self.exx, self.eyy, self.ezz, self.exy, self.eyz, self.exz = e
+        self.latxx, self.latyy, self.latzz, self.latxy, self.latyz, self.latxz = lat        
+        self.x, self.y, self.z = dims
+        self.phi1, self.phi2, self.phi3, rot
+        self.v = v  
         
 
 
@@ -67,14 +74,14 @@ def scrape_frame(frame, num_grains, N):
     lat_SDV_nums = range((N * 12 + 4), (N * 12 + 4) + 6)
     rot_SDV_nums = range((N * 34 + 3), (N * 34 + 3) + 3)
     
-    sxx, syy, szz, sxy, syz, sxz = [np.empty((len(num_grains))),]*6    
-    exx, eyy, ezz, exy, eyz, exz = [np.empty((len(num_grains))),]*6  
+    s = [np.empty((len(num_grains))),]*6    
+    e = [np.empty((len(num_grains))),]*6  
     
-    latxx, latyy, latzz, latxy, latyz, latxz = [np.empty((len(num_grains))),]*6
-    phi1, phi2, phi3 = [np.empty((len(num_grains))),]*3
+    lat = [np.empty((len(num_grains))),]*6
+    rot = [np.empty((len(num_grains))),]*3
     
     v = np.empty((len(num_grains)))
-    x, y, z = [np.empty((len(num_grains))),]*3
+    dims = [np.empty((len(num_grains))),]*3
     
     data_fo = frame.fieldOutputs
 
@@ -131,22 +138,17 @@ def scrape_frame(frame, num_grains, N):
         coords_v = [coords_v[i] / vv for i in range(3)]
         vv = 0
 
-           
-        sxx[idx], syy[idx], szz[idx] = s_v[0], s_v[1], s_v[2]
-        sxy[idx], syz[idx], sxz[idx] = s_v[3], s_v[4], s_v[5]
-        
-        exx[idx], eyy[idx], ezz[idx] = e_v[0], e_v[1], e_v[2]
-        exy[idx], eyz[idx], exz[idx] = e_v[3], e_v[4], e_v[5]
-        
-        latxx[idx], latyy[idx], latzz[idx] = lattice_v[0], lattice_v[1], lattice_v[2]
-        latxy[idx], latyz[idx], latxz[idx] = lattice_v[3], lattice_v[4], lattice_v[5]
-        
-        x[idx], y[idx], z[idx] = coords_v
-        phi1[idx], phi2[idx], phi3[idx] = rot_v
+        # Unpack values
+        for i in range(6):
+            s[i][idx] = s_v[i]
+            e[i][idx] = e_v[i]
+            lat[i][idx] = lattice_v[i]
+            
+        for i in range(3):
+            dims[i][idx] = coords_v[i]
+            rot[i][idx] = rot_v[i]
         
         v[idx] = vv
         
-    return  (sxx, syy, szz, sxy, syz, sxz, exx, eyy, ezz, exy, eyz, exz, 
-             latxx, latyy, latzz, latxy, latyz, latxz, 
-             v, x, y, z, phi1, phi2, phi3)
+    return  (s, e, lat, dims, rot, v)
 
