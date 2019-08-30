@@ -10,8 +10,8 @@ setup(
     url='https://github.com/casimp/cpex',
     download_url = 'https://github.com/casimp/cpex/tarball/v0.0.1',
     license='LICENSE.txt',
-    description='Extraction and manipulation of crystal plasticity data from ODB files.',
-    keywords = ['CP', 'crystal plasticity', 'XRD', 'EDXRD', 'x-ray', 'diffraction', 'strain'],
+    description='Extraction and manipulation of crystal plasticity data from Abaqus ODB files.',
+    keywords = ['CP', 'crystal plasticity', 'diffraction', 'strain'],
 #    long_description=open('description').read(),
     classifiers=[
         "Development Status :: 4 - Beta",
