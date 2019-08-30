@@ -1,6 +1,9 @@
 cpex: Crystal Plasticity Data Extraction
 ===============================================
 
+[![Build Status](https://travis-ci.org/casimp/cpex.svg?branch=master)](https://travis-ci.org/casimp/cpex) 
+[![Build status](https://ci.appveyor.com/api/projects/status/9cc2aej45li1pm97?svg=true)](https://ci.appveyor.com/project/casimp/cpex/branch/master)
+
 What is cpex?
 -------------
 
@@ -20,7 +23,7 @@ PyXe is built on Python’s scientific stack (numpy, scipy, matplotlib). Additio
 -	matplotlib: version 3.0.3
 -	h5py: version 2.8.0
 
-Backward compatability to Python 3.5 is likely but not guaranteed. Monochromatic XRD caking/azimuthal integration within pyXe relies on pyFAI (and fabIO), which is a software package developed at the ESRF, designed to reduce SAXS, WAXS and XRPD images recorded by area detectors to 1D plots or 2D patterns. This caking functionality is not currently under development within pyXe and recent developments within pyFAI may have broken this functionality. While this may be fixed in the future we currently advise that azimuthal integration be carried out as a pre-processing step at the beamline (using pyFAI at ESRF or DAWN at DLS); the pyXe monochromatic post-processing analysis platform should be flexible enough to deal with most data inputs (although interface modules will likely be required outside of the Diamond Light Source).
+Backward compatability to Python 3.5 is likely but not guaranteed. 
 
 Installation
 ------------
