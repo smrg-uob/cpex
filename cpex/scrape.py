@@ -8,14 +8,8 @@ import pickle
 from abaqusConstants import *
 import time
 from cpex.data_io import cpex_to_hdf5
+from cpex.lattice import Lattice
 
-
-class Lattice():
-    def extract_lattice(self):
-        pass
-    
-    def calc_lattice_tensor(self):
-        pass
     
 
 class ScrapeODB(Lattice):
@@ -53,19 +47,7 @@ class ScrapeODB(Lattice):
         self.exx, self.eyy, self.exy = sxx, syy, sxy
         self.v = v
         self.eSDV149 = eSDV149
-        self.ro1, self.ro2, self.ro3 = ro1, ro2, ro3
-        
-
-    def save_to_hdf5(self, fpath, overwrite=False):
-        """ Save data back to hdf5 file format.
-
-        Saves analyzed information and the raw, scraped data.
-
-        Args:
-            fpath (str): Abs. path for new file
-            overwrite (bool): Overwrite file if it already exists
-        """
-        cpex_to_hdf5(fpath, self, overwrite)        
+        self.ro1, self.ro2, self.ro3 = ro1, ro2, ro3     
         
 
 
