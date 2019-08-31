@@ -2,10 +2,7 @@ import numpy as np
 
 from odbAccess import *
 from abaqusConstants import *
-import time
-# from cpex.data_io import cpex_to_hdf5
-# from cpex.lattice import Lattice
-   
+import time   
 
 class ScrapeODB(): # Lattice
     def __init__(self, fpath, N=12):
@@ -44,7 +41,13 @@ class ScrapeODB(): # Lattice
             self.lat[:, :, fidx] = sc[2]
             self.dims[:, :, fidx] = sc[3]
             self.rot[:, :, fidx] = sc[4]
-            self.v[:, fidx] = sc[5]     
+            self.v[:, fidx] = sc[5]    
+               
+            
+    def save_cpex(self, fpath):
+        np.savez(fpath, s=self.s, e=self.e, lat=self.lat, dims=self.dims, 
+                 rot=self.rot, v=self.v, N=self.N,
+                 num_frames=self.num_frames, num_grains=self.num_grains)
 
 
 def scrape_frame(frame, num_grains, instances, N):
@@ -99,14 +102,9 @@ def scrape_frame(frame, num_grains, instances, N):
             
             s_v += np.array([stress[ip].data[i] * vv_ for i in range(6)])
             e_v += np.array([strain[ip].data[i] * vv_ for i in range(6)])
-            # lv = np.array([i[ip].data * vv_ for i in latSDV])
-            #print(lat_v, lv)
             lat_v += np.array([i[ip].data * vv_ for i in latSDV])
-            # cv = np.array([coords[ip].data[i] * vv_ for i in range(3)])
-            #coords_v += np.array([coords[ip].data[i] * vv_ for i in range(3)])
             rot_v += np.array([i[ip].data * vv_ for i in rotSDV])
             vv += vv_
-        
 
         
         # Unpack values
@@ -124,3 +122,4 @@ if __name__ == '__main__':
     data = ScrapeODB('/newhome/mi19356/chris_odb/chris_odb.odb')
     print(data.e.shape)
     np.savetxt('test_strain.txt', data.e[0], delimiter=',')
+    data.save_cpex('test_cpex.npz')
