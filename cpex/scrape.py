@@ -15,7 +15,8 @@ class ScrapeODB(): # Lattice
         self.odb = openOdb(path=self.fpath)    
         self.frames= self.odb.steps['Loading'].frames
         self.instances = self.odb.rootAssembly.instances['DREAM-1'.upper()]
-        self.num_frames = 20 # len(self.frames) / 4
+        print(len(self.frames))
+        self.num_frames = len(self.frames) // 3 # 4
         self.N = N
         
         ### Need to calc number of grains
@@ -41,7 +42,12 @@ class ScrapeODB(): # Lattice
             self.lat[:, :, fidx] = sc[2]
             self.dims[:, :, fidx] = sc[3]
             self.rot[:, :, fidx] = sc[4]
-            self.v[:, fidx] = sc[5]    
+            self.v[:, fidx] = sc[5]   
+            
+            if fidx % 4 == 0:
+                f = open("progress.txt","w") 
+                f.write('{} out of {} frames complete'.format(fidx, self.num_frames)) 
+                f.close()
                
             
     def save_cpex(self, fpath):
@@ -100,8 +106,13 @@ def scrape_frame(frame, num_grains, instances, N):
         for ip in range(numElements*8):
             vv_ = Volume[ip].data
             
-            s_v += np.array([stress[ip].data[i] * vv_ for i in range(6)])
-            e_v += np.array([strain[ip].data[i] * vv_ for i in range(6)])
+            #stress_ip =  
+            #strain_ip = strain[ip].data
+            
+            s_v += np.array(stress[ip].data[:6] * vv_) # np.array([stress_ip[i] * vv_ for i in range(6)])
+            e_v += np.array(strain[ip].data[:6] * vv_) # np.array([stress_ip[i] * vv_ for i in range(6)])
+            #e_v += np.array([strain_ip[i] * vv_ for i in range(6)])
+            
             lat_v += np.array([i[ip].data * vv_ for i in latSDV])
             rot_v += np.array([i[ip].data * vv_ for i in rotSDV])
             vv += vv_
@@ -119,7 +130,11 @@ def scrape_frame(frame, num_grains, instances, N):
 
 
 if __name__ == '__main__':
+    t0 = time.time()
     data = ScrapeODB('/newhome/mi19356/chris_odb/chris_odb.odb')
     print(data.e.shape)
     np.savetxt('test_strain.txt', data.e[0], delimiter=',')
     data.save_cpex('test_cpex.npz')
+    t1 = time.time()
+    np.savetxt('time_new.txt', np.array([t1-t0]), delimiter=',')
+
