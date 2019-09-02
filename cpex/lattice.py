@@ -4,6 +4,7 @@ Created on Fri Aug 30 14:48:44 2019
 
 @author: cs17809
 """
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -50,6 +51,8 @@ class Lattice():
     
     
 if __name__ == '__main__':
-    data = Lattice(r'C:\Users\cs17809\Dropbox\Projects\CPFE/test_cpex.npz')
+    folder = os.path.join(os.path.dirname(__file__), r'data') # should be sub [0]
+    fpath = os.path.join(folder, r'test_cpex.npz')
+    data = Lattice(fpath)
     data.plot(x='strain', y='stress')
     # data.plot(x='lattice', y='stress')

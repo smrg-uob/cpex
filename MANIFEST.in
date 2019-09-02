@@ -1,0 +1,1 @@
+recursive-include cpex/data *.npz
