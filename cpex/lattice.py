@@ -8,7 +8,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-class Lattice():
+class Load():
     
     def __init__(self, fpath):
         data = np.load(fpath)
@@ -22,6 +22,9 @@ class Lattice():
         self.num_frames = data['num_frames']
         self.num_grains = data['num_grains']
         
+        self.rot[:, :,0] = self.rot[:, :,1]
+        
+        
     
     def plot(self, y='stress', x='frame', idx=1):
         
@@ -29,7 +32,8 @@ class Lattice():
         
         dy = {'strain':self.e,
              'stress':self.s,
-             'lattice':self.lat}
+             'lattice':self.lat,
+             'rot':self.rot - self.rot[:,:, 0][:, :, None]}
         
         dx = {'time':np.arange(self.num_frames),
              'stress':np.nanmean(self.s[idx], axis=0),
@@ -37,11 +41,13 @@ class Lattice():
              'frame':np.arange(self.num_frames),
              'lattice':np.nanmean(self.lat[idx], axis=0)}
         
+        
         plt.plot(dx[x], dy[y][idx].T, color='k', alpha=0.2)
         plt.plot(dx[x],np.nanmean(dy[y][idx], axis=0), color='r')
         plt.ylabel(y)
         plt.xlabel(x)
-        
+
+
     def extract_lattice(self):
         pass
     
@@ -53,6 +59,6 @@ class Lattice():
 if __name__ == '__main__':
     folder = os.path.join(os.path.dirname(__file__), r'data') # should be sub [0]
     fpath = os.path.join(folder, r'test_cpex.npz')
-    data = Lattice(fpath)
+    data = Load(fpath)
     data.plot(x='strain', y='stress')
     # data.plot(x='lattice', y='stress')
