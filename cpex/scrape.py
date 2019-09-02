@@ -1,8 +1,25 @@
 import numpy as np
+from argparse import ArgumentParser
+
+parser = ArgumentParser()
+
+parser.add_argument("-f", "--fpath", dest="fpath",
+                    help="Path to file for scraping")
+
+parser.add_argument("-N", "--nslip", dest="N",
+                    help="Number of slip systems (default 12)")
+
+parser.add_argument("-s", "--spath", dest="spath",
+                    help="Path to save scraped data (default cpex.npz)")
+
+args = parser.parse_args()
 
 from odbAccess import *
 from abaqusConstants import *
 import time   
+
+
+
 
 class ScrapeODB(): # Lattice
     def __init__(self, fpath, N=12):
@@ -16,7 +33,7 @@ class ScrapeODB(): # Lattice
         self.frames= self.odb.steps['Loading'].frames
         self.instances = self.odb.rootAssembly.instances['DREAM-1'.upper()]
         print(len(self.frames))
-        self.num_frames = len(self.frames) // 3 # 4
+        self.num_frames = len(self.frames)
         self.N = N
         
         ### Need to calc number of grains
@@ -106,17 +123,28 @@ def scrape_frame(frame, num_grains, instances, N):
         for ip in range(numElements*8):
             vv_ = Volume[ip].data
             
-            #stress_ip =  
-            #strain_ip = strain[ip].data
+            s_v += np.array(stress[ip].data[:6] * vv_) 
+            e_v += np.array(strain[ip].data[:6] * vv_) 
             
-            s_v += np.array(stress[ip].data[:6] * vv_) # np.array([stress_ip[i] * vv_ for i in range(6)])
-            e_v += np.array(strain[ip].data[:6] * vv_) # np.array([stress_ip[i] * vv_ for i in range(6)])
-            #e_v += np.array([strain_ip[i] * vv_ for i in range(6)])
+            # Handle this better!
+            try:
+                coords_v += np.array(coords[ip].data[:3] * vv_)
+            except:
+                pass
             
-            lat_v += np.array([i[ip].data * vv_ for i in latSDV])
-            rot_v += np.array([i[ip].data * vv_ for i in rotSDV])
-            vv += vv_
-
+            try:
+                lat_v += np.array([i[ip].data * vv_ for i in latSDV])
+            except:
+                pass
+            
+            try:
+                rot_v += np.array([i[ip].data * vv_ for i in rotSDV])
+            except:
+                pass
+            try:
+                vv += vv_
+            except:
+                pass
         
         # Unpack values
         s[:,idx] = s_v / vv
@@ -129,12 +157,15 @@ def scrape_frame(frame, num_grains, instances, N):
     return  (s, e, lat, dims, rot, v)
 
 
-if __name__ == '__main__':
-    t0 = time.time()
-    data = ScrapeODB('/newhome/mi19356/chris_odb/chris_odb.odb')
-    print(data.e.shape)
-    np.savetxt('test_strain.txt', data.e[0], delimiter=',')
-    data.save_cpex('test_cpex.npz')
-    t1 = time.time()
-    np.savetxt('time_new.txt', np.array([t1-t0]), delimiter=',')
+t0 = time.time()
+
+args.fpath = '/newhome/mi19356/chris_odb/chris_odb.odb' if args.fpath == None else args.fpath
+args.N = 12 if args.N == None else args.N
+args.spath = 'cpex.npz' if args.spath == None else args.spath
+
+data = ScrapeODB(args.fpath, args.N)
+data.save_cpex(args.spath)
+
+t1 = time.time()
+np.savetxt('time.txt', np.array([t1-t0]), delimiter=',')
 
