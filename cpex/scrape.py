@@ -33,13 +33,15 @@ import time
 def multi_step(fpath, N, frame_step=1, num_grains=None):
     
     odb = openOdb(path=fpath)
+    instances = odb.rootAssembly.instances['DREAM-1'.upper()]
+    elementSets = instances.elementSets
     steps = odb.steps.keys()
     
-    d = ScrapeODB(None, N, steps[0], odb, frame_step=frame_step, num_grains=num_grains)
+    d = ScrapeODB(None, N, steps[0], odb=odb, instances=instances, elementSets=elementSets, frame_step=frame_step, num_grains=num_grains)
     for idx, step in enumerate(steps[1:]):
         print(step)
         try:
-            di = ScrapeODB(None, N, step, odb, frame_step=frame_step, num_grains=num_grains)
+            di = ScrapeODB(None, N, step, odb=odb, instances=instances, elementSets=elementSets, frame_step=frame_step, num_grains=num_grains)
             d += di
         except TypeError:
             print('Exited on step {} (step {}/{}) - will attempt to save up to this step'.format(step, idx+2, len(steps)))
@@ -48,8 +50,9 @@ def multi_step(fpath, N, frame_step=1, num_grains=None):
     
 
 class ScrapeODB(): # Lattice
-    def __init__(self, fpath, N=12, step='Loading', odb=None, 
-                 frame_step=1, num_grains=None):
+    def __init__(self, fpath, N=12, step='Loading',
+                 frame_step=1, num_grains=None,
+                 odb=None, instances=None, elementSets=None):
         """
         Args:
             fpath (str): Path to an odb file
@@ -58,17 +61,21 @@ class ScrapeODB(): # Lattice
         self.fpath = fpath
         if fpath == None:
             self.odb = odb
+            self.instances = instances
+            self.elementSets = elementSets
         else:
             self.odb = openOdb(path=self.fpath)    
+            self.instances = self.odb.rootAssembly.instances['DREAM-1'.upper()] 
+            self.elementSets = self.instances.elementSets
+        #numElements=len(myInstance.elements) # Find all elements in grain
+            
         self.step = step
-        
         self.frames= self.odb.steps[step].frames
-        self.instances = self.odb.rootAssembly.instances['DREAM-1'.upper()]
-        self.num_frames = len(self.frames) // frame_step
+        self.num_frames = len(range(0, len(self.frames), frame_step))
         self.N = N
         
         ### Need to calc number of grains
-        self.num_grains = len([i for i in self.instances.elementSets.keys() if i[:5] == 'GRAIN'])
+        self.num_grains = len([i for i in self.elementSets.keys() if i[:5] == 'GRAIN'])
         self.num_grains = self.num_grains if num_grains == None else num_grains
         print(self.num_grains)
         
@@ -76,35 +83,10 @@ class ScrapeODB(): # Lattice
         d_shape = (self.num_grains, self.num_frames)
         print(d_shape)
         
-        self.s = np.zeros((6,) + d_shape)
-        self.e = np.zeros((6,) + d_shape)
-        self.lat = np.zeros((6,) + d_shape)
-        self.rot = np.zeros((3,) + d_shape)
-        self.dims = np.zeros((3,) + d_shape)
-        self.v = np.zeros(d_shape)
-        self.t = np.zeros((self.num_frames,))
-
-        # Open each frame in turn and extract data
-        for fidx in range(0, self.num_frames, frame_step): #self.num_frames): 
-            frame = self.frames[fidx]
-            sc = scrape_frame(frame, self.num_grains, self.instances, self.N)
-
-            self.s[:, :, fidx] = sc[0]
-            self.e[:, :, fidx] = sc[1]
-            self.lat[:, :, fidx] = sc[2]
-            self.dims[:, :, fidx] = sc[3]
-            self.rot[:, :, fidx] = sc[4]
-            self.v[:, fidx] = sc[5]  
-            self.t[fidx] = sc[6]
-            
-            if fidx % 4 == 0:
-                f = open("progress_10g.txt","w") 
-                f.write('{}: {} out of {} frames complete'.format(self.step, fidx, self.num_frames)) 
-                f.close()
-        
+        sc = scrape_frames(self.frames, frame_step, self.num_grains, self.elementSets, self.N, self.step)
+        self. s, self.e, self.lat, self.dims, self.rot, self.v, self.t = sc       
 
                
-            
     def save_cpex(self, fpath):
         np.savez(fpath, s=self.s, e=self.e, lat=self.lat, dims=self.dims, 
                  rot=self.rot, v=self.v, N=self.N,
@@ -123,113 +105,98 @@ class ScrapeODB(): # Lattice
         self.t = np.append(self.t, other.t + self.t[-1] + other.t[1]/1e6, axis=-1)
         
         return self
-        #return basic_merge([self, other])
-        
 
 
-def scrape_frame(frame, num_grains, instances, N):
+def scrape_frames(frames, frame_step, num_grains, elementSets, N, step):
+    
+    num_frames = len(frames)
+    d_shape = (num_grains, num_frames)
+    
+    s = np.zeros((6,) + d_shape)
+    e = np.zeros((6,) + d_shape)
+    lat = np.zeros((6,) + d_shape)
+    rot = np.zeros((3,) + d_shape)
+    dims = np.zeros((3,) + d_shape)
+    v = np.zeros(d_shape)
+    t = np.zeros((num_frames,))
     
     lat_SDV_nums = range((N * 12 + 4), (N * 12 + 4) + 6 )
     rot_SDV_nums = range((N * 34 + 3), (N * 34 + 3) + 3 )
     
-    s = np.zeros((6,num_grains))
-    e = np.zeros((6,num_grains))  
-    lat = np.zeros((6,num_grains))
-    dims = np.zeros((3,num_grains))
-    rot = np.zeros((3,num_grains))
-    v = np.zeros((num_grains)) 
+    for fidx in range(0, num_frames, frame_step): 
     
-    data_fo = frame.fieldOutputs
-
-    # Abaqus
-    stress_ = data_fo['S']
-    strain_ = data_fo['LE']
-    Volume_ = data_fo['IVOL']
-    try:
-        coords_ = data_fo['COORD']
-    except:
-        pass
-    # SDVs
-    try:
-        latSDV_ = [data_fo['SDV{}'.format(i)] for i in lat_SDV_nums]
-    except:
-        pass
+        frame = frames[fidx]
+        data_fo = frame.fieldOutputs
     
-    try:
-        rotSDV_ = [data_fo['SDV{}'.format(i)] for i in rot_SDV_nums]
-    except:
-        pass
-    
-    for idx, grain in enumerate(range(1, num_grains + 1)):
-        grain = 'GRAIN-{}'.format(grain)
-        myInstance=instances.elementSets[grain] # Select grain
-        numElements=len(myInstance.elements) # Find all elements in grain
+        # Abaqus
+        stress_ = data_fo['S']
+        strain_ = data_fo['LE']
+        Volume_ = data_fo['IVOL']
         
-        # Elastic+plastic response
-        stress = stress_.getSubset(region=myInstance,position=INTEGRATION_POINT,elementType='C3D8').values
-        strain = strain_.getSubset(region=myInstance,position=INTEGRATION_POINT,elementType='C3D8').values
-        Volume = Volume_.getSubset(region=myInstance,position=INTEGRATION_POINT,elementType='C3D8').values
-        
-        
-        # SDV:  Lattice results exx, eyy, ezz, exy, exz, eyz
+        co, la, ro = True, True, True
         try:
-            latSDV = [i.getSubset(region=myInstance,position=INTEGRATION_POINT,elementType='C3D8').values for i in latSDV_]
+            coords_ = data_fo['COORD']
         except:
-            pass
+            co = False
+        # SDVs
+        try:
+            latSDV_ = [data_fo['SDV{}'.format(i)] for i in lat_SDV_nums]
+        except:
+            la = False
         
         try:
-            rotSDV = [i.getSubset(region=myInstance,position=INTEGRATION_POINT,elementType='C3D8').values for i in rotSDV_]
+            rotSDV_ = [data_fo['SDV{}'.format(i)] for i in rot_SDV_nums]
         except:
-            pass
+            ro = False
         
-        try:
-            coords = coords_.getSubset(region=myInstance,position=NODAL).values
-        except:
-            pass
+        for idx, grain in enumerate(range(1, num_grains + 1)):
+            grain = 'GRAIN-{}'.format(grain)
+            myInstance=elementSets[grain] # Select grain
+            numElements=len(myInstance.elements) # Find all elements in grain
             
-        # Iterate over total number of elements and sum the strain/unit volume
-        s_v = np.zeros((6,))
-        e_v = np.zeros((6,))
-        lat_v = np.zeros((6,))
-        coords_v = np.zeros((3,))
-        rot_v = np.zeros((3,))
-        vv = 0
-
-        for ip in range(numElements*8):
-            vv_ = Volume[ip].data
+            # Elastic+plastic response
+            stress = stress_.getSubset(region=myInstance,position=INTEGRATION_POINT,elementType='C3D8').values
+            strain = strain_.getSubset(region=myInstance,position=INTEGRATION_POINT,elementType='C3D8').values
+            Volume = Volume_.getSubset(region=myInstance,position=INTEGRATION_POINT,elementType='C3D8').values
+                
+            # SDV:  Lattice results exx, eyy, ezz, exy, exz, eyz
+            if la:
+                latSDV = [i.getSubset(region=myInstance,position=INTEGRATION_POINT,elementType='C3D8').values for i in latSDV_]
+            if ro:
+                rotSDV = [i.getSubset(region=myInstance,position=INTEGRATION_POINT,elementType='C3D8').values for i in rotSDV_]
+            if co:
+                coords = coords_.getSubset(region=myInstance,position=NODAL).values
+                
+    
+            for ip in range(numElements*8):
+                vv_ = Volume[ip].data
+                
+                s[:,idx, fidx] += stress[ip].data[:6] * vv_
+                e[:,idx, fidx] += strain[ip].data[:6] * vv_
+                
+                if co:
+                    coords[:,idx, fidx] += coords[ip].data[:3] * vv_
+                if la:
+                    lat[:,idx, fidx] += np.array([i[ip].data * vv_ for i in latSDV])
+                if ro:
+                    rot[:,idx, fidx] += np.array([i[ip].data * vv_ for i in rotSDV])
+   
+                v[idx, fidx] += vv_
+    
+            # Set values 
+            vv = v[idx, fidx]
+            s[:,idx, fidx] /= vv
+            e[:,idx, fidx] /= vv
+            lat[:,idx, fidx] /= vv       
+            dims[:,idx, fidx] /= vv
+            rot[:,idx, fidx] /= vv
+            t[fidx] = frame.frameValue
             
-            s_v += np.array(stress[ip].data[:6] * vv_) 
-            e_v += np.array(strain[ip].data[:6] * vv_) 
+            if fidx % 4 == 0:
+                f = open("progress.txt","w") 
+                f.write('{}: {} out of {} frames complete'.format(step, fidx, num_frames)) 
+                f.close()
             
-            # Handle this better!
-            try:
-                coords_v += np.array(coords[ip].data[:3] * vv_)
-            except:
-                pass
-            
-            try:
-                lat_v += np.array([i[ip].data * vv_ for i in latSDV])
-            except:
-                pass
-            
-            try:
-                rot_v += np.array([i[ip].data * vv_ for i in rotSDV])
-            except:
-                pass
-
-
-            vv += vv_
-
-        
-        # Unpack values
-        s[:,idx] = s_v / vv
-        e[:,idx] = e_v  / vv
-        lat[:,idx] = lat_v / vv            
-        dims[:,idx] = coords_v / vv
-        rot[:,idx] = rot_v / vv
-        v[idx] = vv
-        t = frame.frameValue
-        
     return  (s, e, lat, dims, rot, v, t)
 
 
@@ -250,5 +217,6 @@ else:
 data.save_cpex(args.spath)
 
 t1 = time.time()
-np.savetxt('time_10g.txt', np.array([t1-t0]), delimiter=',')
+np.savetxt('time.txt', np.array([t1-t0]), delimiter=',')
+
 
