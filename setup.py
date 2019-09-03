@@ -2,13 +2,13 @@ from setuptools import setup
 
 setup(
     name='cpex',
-    version='0.0.1',
+    version='0.1',
     author='C. Simpson',
     author_email='c.a.simpson01@gmail.com',
     packages=['cpex'],
     include_package_data=True,
     url='https://github.com/casimp/cpex',
-    download_url = 'https://github.com/casimp/cpex/tarball/v0.0.1',
+    download_url = 'https://github.com/casimp/cpex/tarball/v0.1',
     license='LICENSE.txt',
     description='Extraction and manipulation of crystal plasticity data from Abaqus ODB files.',
     keywords = ['CP', 'crystal plasticity', 'diffraction', 'strain'],

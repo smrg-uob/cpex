@@ -1,0 +1,1 @@
+v 0.1.0, 20190903 -- Initial release: Scraping and reload/plotting implemented
