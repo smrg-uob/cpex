@@ -55,8 +55,11 @@ class Load():
     def plot_subset(self, grain_list, y='stress', x='frame', idx=1, alpha=0.2, 
                     random=None):
         
+        
         if random != None:
             grain_list = np.random.choice(self.num_grains, random)
+        else:
+            grain_list = [i-1 for i in grain_list]
         
         dy = {'strain':self.e[:,grain_list],
              'stress':self.s[:,grain_list],
