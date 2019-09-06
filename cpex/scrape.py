@@ -193,7 +193,7 @@ def scrape_frames(frames, frame_step, num_grains, elementSets, N, step):
             t[fidx] = frame.frameValue
             
             if fidx % 4 == 0:
-                f = open("progress.txt","w") 
+                f = open("progress_{}.txt".format(num_grains),"w") 
                 f.write('{}: {} out of {} frames complete'.format(step, fidx, num_frames)) 
                 f.close()
             
@@ -205,7 +205,7 @@ t0 = time.time()
 
 args.fpath = '/newhome/mi19356/chris_odb/chris_odb.odb' if args.fpath == None else args.fpath
 args.N = 12 if args.N == None else int(args.N)
-args.spath = 'cpex.npz' if args.spath == None else args.spath
+args.spath = "cpex_{}.npz".format(time.strftime("%Y%m%d_%H%M%S")) if args.spath == None else args.spath
 
 if args.step == None:
     data = multi_step(args.fpath, args.N, num_grains=args.num_grains,
@@ -214,9 +214,13 @@ else:
     data = ScrapeODB(args.fpath, args.N, args.step, num_grains=args.num_grains,
                      frame_step=args.frame_step)
     
-data.save_cpex(args.spath)
+try:
+    data.save_cpex(args.spath)
+except IOError:
+    print('Invalid spath specified, saving as cpex_{data_time}.npz')
+    data.save_cpex("cpex_{}.npz".format(time.strftime("%Y%m%d_%H%M%S")))
 
 t1 = time.time()
-np.savetxt('time.txt', np.array([t1-t0]), delimiter=',')
+np.savetxt('time_{}.txt'.format(data.num_grains), np.array([t1-t0]), delimiter=',')
 
 
