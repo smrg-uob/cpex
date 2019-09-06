@@ -15,13 +15,12 @@ Example Usage
 Requirements
 ------------
 
-cpex is built on Python’s scientific stack (numpy, scipy, matplotlib). Additionally, the h5py package is required for the manipulation and management of the NeXus data files. Testing and development were carried out using the Anaconda (v 2019.03) package manager, which built with the following versions:
+cpex is built on Python's scientific stack (numpy, scipy, matplotlib). Additionally, the h5py package is required for the manipulation and management of the NeXus data files. Testing and development were carried out using the Anaconda (v 2019.03) package manager, which built with the following versions:
 
 -	Python: version 3.7.3
 -	numpy: version 1.16.2
 -	scipy: version 1.2.1
 -	matplotlib: version 3.0.3
--	h5py: version 2.8.0
 
 Backward compatability to Python 3.5 is likely but not guaranteed. 
 
