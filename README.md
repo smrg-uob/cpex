@@ -7,6 +7,19 @@ cpex: Crystal Plasticity Data Extraction
 What is cpex?
 -------------
 
+cpex has been developed at the University of Bristol (SMRG) to optimise the extraction and analysis of crystal plasticity finite element (CPFE) data created using Abaqus.
+
+The data extraction routine is intended for Abaqus odb files and is run on the command line, with all pertinent rotations, stresses and strains being extracted in a single pass. This process has been optimised by minimising the number of calls to the odb file.
+
+The analysis modules focuses on interrogating/resolving the lattice plane specific strain response for the CPFE modelled grains. 
+During the analysis process, the symmetry of the crystal is accounted for, with the full family or set of crystallographically equvalent planes - {hkl} - being assessed. 
+For every grain the strain normal to each of these crystallographic planes calculated/resolved from the grain's orientation and fully described 3D strain state. 
+This information is then stored alongside the associated angle that this normal makes with the loading axis. 
+
+The resolved {hkl} specific CPFE data can then be 'caked' into azimuthal slices. 
+This is consistent with the approach and results acquired during monochromatic X-ray diffraction and typically involves studying the mean strain (for a given {hkl}) in grains that have reflections or plane normals that are parallel or perpendicular to the loading axis. 
+Further use is made of the planes with normals that are not parallel or perpendicular to the loading axis, with an in-plane strain tensor being fit to the azimuthally varying strains. 
+This is consistent with the approach used for the pyXe strain analysis software (http://github.com/casimp/pyxe) and is covered in more detail there.
 
 Example Usage
 -------------
