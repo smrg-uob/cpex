@@ -27,6 +27,14 @@ class Load():
         except KeyError:
             print('time not saved in file, creating zero array')
             self.t = np.zeros((self.num_frames, ))
+            
+        try:
+            self.b_stress = data['b_stress']
+        except KeyError:
+            print('back stress not saved in file, creating zero array')
+            d_shape = (self.num_grains, self.num_frames)
+            self.b_stress = np.zeros((12,) + d_shape)
+            
         self.rot[:, :,0] = self.rot[:, :,1]
         
         
@@ -112,10 +120,8 @@ class Load():
                                           [-3, 1, 1],
                                           [1, -3, 1],
                                           [1, 1, -3]])
+   
     
-
-
-
         angles = []
         for nvec in [nvec_111, nvec_200, nvec_220, nvec_311]:
     
@@ -125,6 +131,7 @@ class Load():
             angles.append(angle)
         
         self.rot_111, self.rot_200, self.rot_220, self.rot_311 = angles
+        
         self.phi_111, self.phi_200, self.phi_220, self.phi_311 = self.rot_111[..., 1, :], self.rot_200[..., 1, :], self.rot_220[..., 1, :], self.rot_311[..., 1, :]
         
 
@@ -154,7 +161,7 @@ class Load():
                                           [-3, 1, 1],
                                           [1, -3, 1],
                                           [1, 1, -3]])
-
+    
         ens = []
         for nvec in [nvec_111, nvec_200, nvec_220, nvec_311]:
             exx, eyy, ezz, exy, exz, eyz =self.lat
@@ -184,8 +191,16 @@ class Load():
     def calc_lattice_tensor(self):
         
         tensors, tensors_err = [], []
-        for e_lat, phi in zip([self.e_111, self.e_200, self.e_220, self.e_311],
-                              [self.phi_111, self.phi_200, self.phi_220, self.phi_311]):
+
+
+        
+        for e_lat, phi, rot in zip([self.e_111, self.e_200, self.e_220, self.e_311],
+                              [self.phi_111, self.phi_200, self.phi_220, self.phi_311],
+                                   [self.rot_111, self.rot_200, self.rot_220, self.rot_311]):
+                                       
+        
+        
+        
             e_tensor, e_tensor_err = np.zeros((3, self.num_frames)), np.zeros((3, self.num_frames))
             for idx in range(self.num_frames):
                 popt, pcov = curve_fit(strain_transformation, phi[:,idx].flatten(), e_lat[:,idx].flatten(), p0=[0, 0, 0])
@@ -199,7 +214,8 @@ class Load():
         self.e_111_tensor_err, self.e_200_tensor_err, self.e_220_tensor_err, self.e_311_tensor_err = tensors_err
         
         
-    def plot_lattice_phi(self, lattice='200', frame=-1, alpha=0.1):
+    def plot_lattice_phi(self, lattice='200', frame=-1, alpha=0.1, restrict_z=True,
+                         restrict_range = [70, 110]):
         
         y = {'111':self.e_111,
              '200':self.e_200,
@@ -216,10 +232,27 @@ class Load():
              '311':self.phi_311,
              '220':self.phi_220}
         
+        rot = {'111':self.rot_111,
+             '200':self.rot_200,
+             '311':self.rot_311,
+             '220':self.rot_220}
+
         
-        plt.plot(x[lattice][:, frame, :].flatten(), y[lattice][:, frame, :].flatten(), '.', alpha=alpha)
+        if restrict_z == True:
+            r0, r1 = restrict_range
+            t_z = rot[lattice][:, :, 2]* 180 / np.pi
+            va = np.logical_and(t_z > r0, t_z < r1)
+            print(np.sum(va))
+        else:
+            va = np.ones_like(rot[lattice][:, :, 2], dtype='bool')
+            
+        vaf = np.zeros_like(rot[lattice][:, :, 2], dtype='bool')
+        vaf[:, frame, :] += True
+        va = np.logical_and(va, vaf)
+        plt.plot(x[lattice][va].flatten(), y[lattice][va].flatten(), '.', alpha=alpha)
         plt.plot(np.linspace(0, np.pi, 1001), strain_transformation(np.linspace(0, np.pi, 1001), *y_tensor[lattice][:, frame]), 'r')
-        
+    
+    
     def plot_lattice_select(self, lattice='200', y='stress', idx=1, 
                             alpha=0.1, window=10, plot_select=True):
         
