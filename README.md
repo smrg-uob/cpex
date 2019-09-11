@@ -7,9 +7,14 @@ cpex: Crystal Plasticity Data Extraction
 What is cpex?
 -------------
 
-cpex has been developed at the University of Bristol (SMRG) to optimise the extraction and analysis of crystal plasticity finite element (CPFE) data created using Abaqus.
+cpex has been developed at the University of Bristol (SMRG) to optimise (a) the extraction and (b) the analysis of crystal plasticity finite element (CPFE) data created using Abaqus.
 
-The data extraction routine is intended for Abaqus odb files and is run on the command line, with all pertinent rotations, stresses and strains being extracted in a single pass. This process has been optimised by minimising the number of calls to the odb file.
+## Data Extraction From .odb File
+
+The data extraction routine is intended for Abaqus odb files and is run on the command line, with all pertinent rotations, stresses and strains being extracted in a single pass. This process has been optimised by minimising the number of calls to the odb file. 
+Scrape data is stored into a .npz file, which is a zipped archive of files named after the variables they contain. This allows for the data to be easily reloaded for the subsequent analysis steps.
+
+## CPFE Data Analysis
 
 The analysis modules focuses on interrogating/resolving the lattice plane specific strain response for the CPFE modelled grains. 
 During the analysis process, the symmetry of the crystal is accounted for, with the full family or set of crystallographically equvalent planes - {hkl} - being assessed. 
@@ -28,7 +33,7 @@ Example Usage
 Requirements
 ------------
 
-cpex is built on Python's scientific stack (numpy, scipy, matplotlib). Additionally, the h5py package is required for the manipulation and management of the NeXus data files. Testing and development were carried out using the Anaconda (v 2019.03) package manager, which built with the following versions:
+cpex is built on Python's scientific stack (numpy, scipy, matplotlib). Testing and development were carried out using the Anaconda (v 2019.03) package manager, which built with the following versions:
 
 -	Python: version 3.7.3
 -	numpy: version 1.16.2

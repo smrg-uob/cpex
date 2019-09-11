@@ -21,6 +21,9 @@ parser.add_argument("--fstep", dest="frame_step",
 parser.add_argument("--ngrains", dest="num_grains",
                     help="Number of grains to analyse (default all)", type=int)
 
+parser.add_argument("--bstress", dest="bstress",
+                    help="Extract backstress (default False)", type=bool)
+
 args = parser.parse_args()
 args.frame_step = 1 if args.frame_step == None else args.frame_step
 
@@ -30,18 +33,22 @@ from abaqusConstants import *
 import time   
 
 
-def multi_step(fpath, N, frame_step=1, num_grains=None):
+def multi_step(fpath, N, frame_step=1, num_grains=None, bstress=False):
     
     odb = openOdb(path=fpath)
     instances = odb.rootAssembly.instances['DREAM-1'.upper()]
     elementSets = instances.elementSets
     steps = odb.steps.keys()
     
-    d = ScrapeODB(None, N, steps[0], odb=odb, instances=instances, elementSets=elementSets, frame_step=frame_step, num_grains=num_grains)
+    d = ScrapeODB(None, N, steps[0], odb=odb, instances=instances, 
+                  elementSets=elementSets, frame_step=frame_step, 
+                  num_grains=num_grains, bstress=bstress)
     for idx, step in enumerate(steps[1:]):
         print(step)
         try:
-            di = ScrapeODB(None, N, step, odb=odb, instances=instances, elementSets=elementSets, frame_step=frame_step, num_grains=num_grains)
+            di = ScrapeODB(None, N, step, odb=odb, instances=instances, 
+                           elementSets=elementSets, frame_step=frame_step, 
+                           num_grains=num_grains, bstress=bstress)
             d += di
         except TypeError:
             print('Exited on step {} (step {}/{}) - will attempt to save up to this step'.format(step, idx+2, len(steps)))
@@ -52,7 +59,7 @@ def multi_step(fpath, N, frame_step=1, num_grains=None):
 class ScrapeODB(): # Lattice
     def __init__(self, fpath, N=12, step='Loading',
                  frame_step=1, num_grains=None,
-                 odb=None, instances=None, elementSets=None):
+                 odb=None, instances=None, elementSets=None, bstress=False):
         """
         Args:
             fpath (str): Path to an odb file
@@ -83,15 +90,16 @@ class ScrapeODB(): # Lattice
         d_shape = (self.num_grains, self.num_frames)
         print(d_shape)
         
-        sc = scrape_frames(self.frames, frame_step, self.num_grains, self.elementSets, self.N, self.step)
-        self. s, self.e, self.lat, self.dims, self.rot, self.v, self.t = sc       
+        sc = scrape_frames(self.frames, frame_step, self.num_grains, 
+                           self.elementSets, self.N, self.step, bstress=bstress)
+        self. s, self.e, self.lat, self.dims, self.rot, self.v, self.t, self.b_stress = sc       
 
                
     def save_cpex(self, fpath):
         np.savez(fpath, s=self.s, e=self.e, lat=self.lat, dims=self.dims, 
                  rot=self.rot, v=self.v, N=self.N,
                  num_frames=self.num_frames, time=self.t,
-                 num_grains=self.num_grains)
+                 num_grains=self.num_grains, b_stress=self.b_stress)
         
     def __add__(self, other):
         
@@ -99,6 +107,7 @@ class ScrapeODB(): # Lattice
         self.s = np.append(self.s, other.s, axis=-1)
         self.e = np.append(self.e, other.e, axis=-1)
         self.lat = np.append(self.lat, other.lat, axis=-1)
+        self.b_stress = np.append(self.b_stress, other.b_stress, axis=-1)
         self.dims = np.append(self.dims, other.dims, axis=-1)
         self.rot = np.append(self.rot, other.rot, axis=-1)
         self.v = np.append(self.v, other.v, axis=-1)
@@ -107,7 +116,7 @@ class ScrapeODB(): # Lattice
         return self
 
 
-def scrape_frames(frames, frame_step, num_grains, elementSets, N, step):
+def scrape_frames(frames, frame_step, num_grains, elementSets, N, step, bstress):
     
     num_frames = len(frames)
     d_shape = (num_grains, num_frames)
@@ -115,6 +124,7 @@ def scrape_frames(frames, frame_step, num_grains, elementSets, N, step):
     s = np.zeros((6,) + d_shape)
     e = np.zeros((6,) + d_shape)
     lat = np.zeros((6,) + d_shape)
+    bs = np.zeros((12,) + d_shape)
     rot = np.zeros((3,) + d_shape)
     dims = np.zeros((3,) + d_shape)
     v = np.zeros(d_shape)
@@ -122,6 +132,7 @@ def scrape_frames(frames, frame_step, num_grains, elementSets, N, step):
     
     lat_SDV_nums = range((N * 12 + 4), (N * 12 + 4) + 6 )
     rot_SDV_nums = range((N * 34 + 3), (N * 34 + 3) + 3 )
+    bstress_SDV_nums = range(217, 229)
     
     for fidx in range(0, num_frames, frame_step): 
     
@@ -148,6 +159,9 @@ def scrape_frames(frames, frame_step, num_grains, elementSets, N, step):
             rotSDV_ = [data_fo['SDV{}'.format(i)] for i in rot_SDV_nums]
         except:
             ro = False
+            
+        if bstress:
+            bstressSDV_ = [data_fo['SDV{}'.format(i)] for i in bstress_SDV_nums]
         
         for idx, grain in enumerate(range(1, num_grains + 1)):
             grain = 'GRAIN-{}'.format(grain)
@@ -166,6 +180,8 @@ def scrape_frames(frames, frame_step, num_grains, elementSets, N, step):
                 rotSDV = [i.getSubset(region=myInstance,position=INTEGRATION_POINT,elementType='C3D8').values for i in rotSDV_]
             if co:
                 coords = coords_.getSubset(region=myInstance,position=NODAL).values
+            if bstress:
+                bstressSDV = [i.getSubset(region=myInstance,position=INTEGRATION_POINT,elementType='C3D8').values for i in bstressSDV_]
                 
     
             for ip in range(numElements*8):
@@ -180,6 +196,8 @@ def scrape_frames(frames, frame_step, num_grains, elementSets, N, step):
                     lat[:,idx, fidx] += np.array([i[ip].data * vv_ for i in latSDV])
                 if ro:
                     rot[:,idx, fidx] += np.array([i[ip].data * vv_ for i in rotSDV])
+                if bstress:
+                    bs[:, idx, fidx] += np.array([i[ip].data * vv_ for i in bstressSDV])
    
                 v[idx, fidx] += vv_
     
@@ -187,7 +205,8 @@ def scrape_frames(frames, frame_step, num_grains, elementSets, N, step):
             vv = v[idx, fidx]
             s[:,idx, fidx] /= vv
             e[:,idx, fidx] /= vv
-            lat[:,idx, fidx] /= vv       
+            lat[:,idx, fidx] /= vv  
+            bs[:,idx, fidx] /= vv  
             dims[:,idx, fidx] /= vv
             rot[:,idx, fidx] /= vv
             t[fidx] = frame.frameValue
@@ -197,7 +216,7 @@ def scrape_frames(frames, frame_step, num_grains, elementSets, N, step):
                 f.write('{}: {} out of {} frames complete'.format(step, fidx, num_frames)) 
                 f.close()
             
-    return  (s, e, lat, dims, rot, v, t)
+    return  (s, e, lat, dims, rot, v, t, bs)
 
 
 
@@ -205,14 +224,15 @@ t0 = time.time()
 
 args.fpath = '/newhome/mi19356/chris_odb/chris_odb.odb' if args.fpath == None else args.fpath
 args.N = 12 if args.N == None else int(args.N)
+args.bstress = False if args.bstress == None else args.bstress
 args.spath = "cpex_{}.npz".format(time.strftime("%Y%m%d_%H%M%S")) if args.spath == None else args.spath
 
 if args.step == None:
     data = multi_step(args.fpath, args.N, num_grains=args.num_grains,
-                     frame_step=args.frame_step)
+                     frame_step=args.frame_step, bstress=args.bstress)
 else:
     data = ScrapeODB(args.fpath, args.N, args.step, num_grains=args.num_grains,
-                     frame_step=args.frame_step)
+                     frame_step=args.frame_step, bstress=args.bstress)
     
 try:
     data.save_cpex(args.spath)
