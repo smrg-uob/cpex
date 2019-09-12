@@ -8,14 +8,15 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
+from collections import OrderedDict
 
 class Load():
     
-    def __init__(self, fpath):
+    def __init__(self, fpath, calc=True):
         data = np.load(fpath)
         self.e = data['e']
         self.s = data['s']
-        self.lat = data['lat']
+        self.elastic = data['lat']
         self.dims = data['dims']
         self.rot = data['rot']
         self.v = data['v']
@@ -36,60 +37,349 @@ class Load():
             self.b_stress = np.zeros((12,) + d_shape)
             
         self.rot[:, :,0] = self.rot[:, :,1]
+        self.lattice_list = ['111', '200', '220', '311']
+        self.lattice_nvecs = [nvec_111, nvec_200, nvec_220, nvec_311]
+        
+        if calc:
+            print('Calculating lattice rotations and strains...')
+            self.calc_lattice_rot()
+            self.calc_lattice_strain()
+            self.calc_lattice_tensor()
         
         
-    
-    def plot(self, y='stress', x='frame', idx=1, alpha=0.2):
-        
-        #Need tp average over volume.
-        
-        dy = {'strain':self.e,
-             'stress':self.s,
-             'lattice':self.lat,
-             'rot':self.rot - self.rot[:,:, 0][:, :, None]}
-        
-        dx = {'time':self.t,
-             'stress':np.nanmean(self.s[idx], axis=0),
-             'strain':np.nanmean(self.e[idx], axis=0),
-             'frame':np.arange(self.num_frames),
-             'lattice':np.nanmean(self.lat[idx], axis=0)}
-        
-        
-        plt.plot(dx[x], dy[y][idx].T, color='k', alpha=alpha)
-        plt.plot(dx[x],np.nanmean(dy[y][idx], axis=0), color='r')
-        plt.ylabel(y)
-        plt.xlabel(x)
-
-
-    def plot_subset(self, grain_list, y='stress', x='frame', idx=1, alpha=0.2, 
-                    random=None):
-        
-        
-        if random != None:
-            grain_list = np.random.choice(self.num_grains, random)
+    def extract_grains(self, data='elastic', idx=1, grain_idx=None):
+        """
+        Routine to extract information about some or all grains.
+        This is independent of lattice family.
+        """
+        if idx == None and grain_idx != None:
+            idx = np.s_[:, grain_idx]
+        elif idx == None and grain_idx == None:
+            idx = np.s_[:, :]
+        elif idx != None and grain_idx == None:
+            idx = np.s_[idx, :]
         else:
-            grain_list = [i-1 for i in grain_list]
+            idx = np.s_[idx, grain_idx]
         
-        dy = {'strain':self.e[:,grain_list],
-             'stress':self.s[:,grain_list],
-             'lattice':self.lat[:,grain_list],
-             'rot':(self.rot - self.rot[:,:, 0][:, :, None])[:,grain_list]}
+        d = {'strain':self.e,
+             'stress':self.s,
+             'elastic':self.elastic,
+             'back stress':self.b_stress,
+             'rot':self.rot - self.rot[:,:, 0][:, :, None],
+             'time':self.t,
+             'frame':np.arange(self.num_frames)}
         
-        dx = {'time':self.t,
-             'stress':np.nanmean(self.s[idx], axis=0),
-             'strain':np.nanmean(self.e[idx], axis=0),
-             'frame':np.arange(self.num_frames),
-             'lattice':np.nanmean(self.lat[idx], axis=0)}
+        if data not in ['time', 'frame', 'rot']:
+            ex = d[data][idx]
+        else:
+            ex = d[data]
+            
+        return ex
+    
+    
+    def extract_lattice(self, data='lattice', family='311', 
+                        grain_idx=None, plane_idx=None):
+        """
+        Routine to extract information about some or all grains for a 
+        specified lattice plane.
+        """
+        if plane_idx == None and grain_idx != None:
+            idx = np.s_[:, grain_idx]
+        elif plane_idx == None and grain_idx == None:
+            idx = np.s_[:, :]
+        elif plane_idx != None and grain_idx == None:
+            idx = np.s_[plane_idx, :]
+        else:
+            idx = np.s_[plane_idx, grain_idx]
         
+        lattice = self.lattice_strain[family][idx]
+        phi = self.lattice_phi[family]
         
-        plt.plot(dx[x], dy[y][idx].T, color='k', alpha=alpha)
-        plt.plot(dx[x],np.nanmean(dy[y][idx], axis=0), color='r')
-        plt.ylabel(y)
+        d = {'phi':phi,'lattice':lattice}
+        
+        return d[data]
+    
+    def extract_phi_idx(self, family='311', phi=0, window=10, frame=0):
+        """
+        Allows for selection of the index of lattice planes wityh a defined 
+        orientation with resepect to the y axis (nominally the loading axis).
+        A 2D array of indices with be returned if a frame is specified, the
+        elemtns in the array will be structured:
+            
+            [[grain_idx, plane_idx],
+            [grain_idx, plane_idx],
+            ...]
+        
+        If None is passed as the frame variable then the rotation of
+        the grain during loading/dwell etc. is being considered - a 2D array 
+        is returned with each element being structured as follows:
+            
+            [[grain_idx, frame_idx, plane_idx],
+            [grain_idx, frame_idx, plane_idx],
+            ...]
+            
+        In addition to the list of indices an equivalent boolean array is 
+        returned in each case.
+            
+        """
+        if frame == None:
+            frame = np.s_[:]
+            
+        phi_ = 180 * self.lattice_phi[family][:, frame] / np.pi
+        
+        phi_ -= 90
+        phi -= 90
+        w = window / 2
+        p0, p1 = phi - w, phi + w
+        
+        s0 = np.logical_and(phi_ > np.min(p0), phi_ < np.max(p1))
+        s1 = np.logical_and(-phi_ > np.min(p0), -phi_ < np.max(p1))
+        select = np.logical_or(s0, s1)
+        
+        va = np.argwhere(select)
+        return va, select
+
+    
+    def plot_phi(self, y='lattice', family='200', frame=-1, idx=0, 
+                         alpha=0.1, restrict_z=False, restrict_range = [70, 110]):
+        
+        lattice = self.lattice_strain
+        
+        y_ = {'lattice': lattice[family],
+              'back stress': self.b_stress[idx]}[y]
+        
+        y_tensor = self.lattice_tensor[family]
+        
+        if y == 'back stress':
+            x = self.rot[1]
+        else:
+            x = self.lattice_phi[family]
+            
+        rot = self.lattice_rot[family]
+
+        
+        if restrict_z == True and y == 'lattice':
+            r0, r1 = restrict_range
+            t_z = rot[:, :, 2]* 180 / np.pi
+            va = np.logical_and(t_z > r0, t_z < r1)
+            vaf = np.zeros_like(rot[:, :, 2], dtype='bool')
+            vaf[:, frame, :] += True
+            va = np.logical_and(va, vaf)
+        else:
+            va = np.s_[:, frame]
+
+        plt.plot(x[va].flatten(), y_[va].flatten(), '.', alpha=alpha)
+        if y == 'lattice':
+            plt.plot(np.linspace(0, np.pi, 1001), strain_transformation(np.linspace(0, np.pi, 1001), *y_tensor[:, frame]), 'r')
+        x = 'lattice rot (phi)' if y == 'lattice' else 'grain rot (phi)'
         plt.xlabel(x)
+        plt.ylabel(y)
     
 
+    
+    def plot_grains(self, y='elastic', x='stress', x_mean=True, 
+             y_mean=False, x_idx=1, y_idx=1, grain_idx=None, alpha=0.2,
+             color='k', mcolor='r'):
+        """
+        Plot grain specific information
+        """
+        # If necessary put grain_idx into list for fancy indexing
+        if isinstance(grain_idx, int):
+            grain_idx = [grain_idx,]
+            
+        # Time and frame can't be averaged
+        if x in ['time', 'frame']:
+            x_mean = False
+        if y in ['time', 'frame']:
+            y_mean = False
+        
+        # Data extraction
+        x_ = self.extract_grains(data=x, idx=x_idx, grain_idx=grain_idx)
+        y_ = self.extract_grains(data=y, idx=y_idx, grain_idx=grain_idx)
 
-    def extract_lattice_rot(self):
+        # Calculate mean of arrays
+        xm = np.nanmean(x_, axis=0) if x not in ['time', 'frame'] else x_
+        ym = np.nanmean(y_, axis=0) if y not in ['time', 'frame'] else y_
+
+        x__ = xm if x_mean else x_.T
+        y__ = ym if y_mean else y_.T
+        
+        # Tinkering with axis labels
+        x = '{} (idx={})'.format(x, x_idx) if x not in ['time', 'frame'] else x
+        y = '{} (idx={})'.format(y, y_idx) if y not in ['time', 'frame'] else y
+        x = 'mean {}'.format(x) if x_mean else x
+        y = 'mean {}'.format(y) if y_mean else y
+        
+        # Plotting
+        plt.plot(np.squeeze(x__), np.squeeze(y__), color=color, alpha=alpha)
+        if (not y_mean or not x_mean) and (grain_idx == None or len(grain_idx) != 1):
+            plt.plot(xm, ym, color=mcolor, label='Mean response')
+            plt.legend()
+        plt.ylabel(y)
+        plt.xlabel(x)
+        
+    
+    def plot_lattice_strain(self, lat_ax='x', ax2='stress', ax2_idx=1, ax2_mean=True, family='200', phi=0, 
+                     window=10, frame=0, alpha=0.2, color='k', mcolor='r',
+                     plot_select=True):
+        
+        """
+        Plot data for a specified family of lattice planes at a defined
+        azimuthal angle (angle wrt y axis)
+        """
+        
+        ax2_mean = False if ax2 in ['time', 'frame'] else ax2_mean
+        
+        
+        d = self.extract_grains(data=ax2, idx=ax2_idx, grain_idx=None)
+        
+
+        
+        valid, select = self.extract_phi_idx(family=family, phi=phi,window=window, frame=frame)
+        if ax2 in ['time', 'frame']:
+            d, dm = d, d
+            
+        else:
+            
+            d = np.nanmean(d, axis=0) if ax2_mean else d[valid[:,0]].T
+            dm = d if ax2_mean else np.nanmean(d, axis=1)
+            
+            
+        
+        lattice = self.extract_lattice(family=family)
+        
+        lattice = lattice[valid[:,0], :, valid[:,1]].T
+        
+        x_ = lattice if lat_ax == 'x' else d
+        y_ = lattice if lat_ax != 'x' else d
+
+        
+        assert np.sum(select) > 0, 'Phi window too small for {} - no grains/planes selected'.format(family)
+        if plot_select:
+            plt.plot(x_, y_, 'k', alpha=alpha)
+            
+        x_ = np.nanmean(lattice, axis=1) if lat_ax == 'x' else dm
+        y_ = np.nanmean(lattice, axis=1) if lat_ax != 'x' else dm
+
+        plt.plot(x_, y_, label=family, color=mcolor)
+        
+        
+        ax2 = '{} (idx={})'.format(ax2, ax2_idx) if ax2 not in ['time', 'frame'] else ax2
+        ax2 = ax2 if not ax2_mean else 'mean {}'.format(ax2)
+        xlabel = ax2 if lat_ax != 'x' else 'lattice'
+        ylabel = ax2 if lat_ax == 'x' else 'lattice'   
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+            
+    
+    def plot_lattice_strain_all(self, lat_ax='x', ax2='stress', ax2_mean=True, 
+                                phi=0, window=10, frame=0, ax2_idx=1):
+        """
+        Repeat plotting for all lattice plane families
+        """
+        for family in self.lattice_list:
+            try:
+                self.plot_lattice_strain(family=family, lat_ax=lat_ax, ax2=ax2, ax2_idx=ax2_idx, phi=phi, 
+                         window=window, frame=frame, plot_select=False, mcolor=None, ax2_mean=ax2_mean)
+            except AssertionError:
+                print('Phi window too small for {} - no grains/planes selected'.format(family))
+        plt.legend(self.lattice_list)
+            
+
+    def plot_back_lattice(self, back_ax='y', b_idx=1, 
+                          ax2='stress', ax2_idx=1, 
+                          family='200', phi=0, window=10, frame=0, 
+                          alpha=0.2, color='k', mcolor='r',
+                          plot_select=True):
+        
+        """
+        Plot back stress for a specified family of lattice planes at a defined
+        azimuthal angle (angle wrt y axis)
+        """
+        
+        back = self.extract_grains(data='back stress', idx=b_idx, grain_idx=None)
+        
+        d = self.extract_grains(data=ax2, idx=ax2_idx, grain_idx=None)
+        d = d if ax2 in ['time', 'frame'] else np.nanmean(d, axis=0)
+
+        
+        valid, select = self.extract_phi_idx(family=family, phi=phi,window=window, frame=frame)
+        
+        # back = back[valid[:,0], :, valid[:,1]].T
+        v = np.unique(valid[:,0])
+        back = back[v, :].T
+        
+        x_ = back if back_ax == 'x' else d
+        y_ = back if back_ax != 'x' else d
+        
+        assert np.sum(select) > 0, 'Phi window too small for {} - no grains/planes selected'.format(family)
+        if plot_select:
+            plt.plot(x_, y_, 'k', alpha=alpha)
+            
+        ax2 = 'mean {} (idx={})'.format(ax2, ax2_idx) if ax2 not in ['time', 'frame'] else ax2
+        
+        xlabel = ax2 if back_ax != 'x' else 'back stress'
+        ylabel = ax2 if back_ax == 'x' else 'back stress'   
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+            
+    def plot_active_slip(self, back_ax='y', b_active = 2,
+                          ax2='stress', ax2_idx=1, 
+                          family='200', phi=0, window=10, frame=0, 
+                          alpha=0.2, color='k', mcolor='r',
+                          plot_select=True):
+        
+        """
+        Plot back stress for a specified family of lattice planes at a defined
+        azimuthal angle (angle wrt y axis)
+        """
+        
+        back = self.extract_grains(data='back stress', idx=None, grain_idx=None)
+        back_bool = np.abs(back) > b_active
+        
+        d = self.extract_grains(data=ax2, idx=ax2_idx, grain_idx=None)
+        d = d if ax2 in ['time', 'frame'] else np.nanmean(d, axis=0)
+
+        
+        valid, select = self.extract_phi_idx(family=family, phi=phi,window=window, frame=frame)
+        
+        # back = back[valid[:,0], :, valid[:,1]].T
+        v = np.unique(valid[:,0])
+        back_active = np.sum(back_bool, axis=0)[v, :].T
+        
+        x_ = back_active if back_ax == 'x' else d
+        y_ = back_active if back_ax != 'x' else d
+        
+        assert np.sum(select) > 0, 'Phi window too small for {} - no grains/planes selected'.format(family)
+        if plot_select:
+            plt.plot(x_, y_, 'k', alpha=alpha)
+            
+        x_ = np.nanmean(back_active, axis=1) if back_ax == 'x' else d
+        y_ = np.nanmean(back_active, axis=1) if back_ax != 'x' else d
+
+        plt.plot(x_, y_, label=family, color=mcolor)
+        
+        ax2 = 'mean {} (idx={})'.format(ax2, ax2_idx) if ax2 not in ['time', 'frame'] else ax2
+        xlabel = ax2 if back_ax != 'x' else 'Active slip systems'
+        ylabel = ax2 if back_ax == 'x' else 'Active slip systems'   
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+        
+    def plot_active_slip_all(self, back_ax='y', b_active = 2,
+                          ax2='stress', ax2_idx=1, 
+                          phi=0, window=10, frame=0):
+        """
+        Repeat plotting for all active slip systems
+        """
+        for family in self.lattice_list:
+            try:
+                self.plot_active_slip(family=family, back_ax=back_ax, ax2=ax2, ax2_idx=ax2_idx, phi=phi, 
+                         window=window, frame=frame, plot_select=False, mcolor=None)
+            except AssertionError:
+                print('Phi window too small for {} - no grains/planes selected'.format(family))
+        plt.legend(self.lattice_list)
+
+    def calc_lattice_rot(self):
         """
         Extracts all angles for FCC grain families. 
          Needs to be generalised to all structures.
@@ -97,74 +387,25 @@ class Load():
         r0, r1, r2 = self.rot[0], self.rot[1], self.rot[2]
         total_rot = trans_matrix(r0, r1, r2)
         total_rot = np.transpose(total_rot, (0, 1, 3, 2))
-        
-        nvec_111 = (1 / np.sqrt(3)) * np.array([[1, 1, 1],
-                                              [1, 1, -1],
-                                              [1, -1, 1],
-                                              [-1, 1, 1]])
-    
-        nvec_200 = np.array([[1, 0, 0],
-                             [0, 1, 0],
-                             [0, 0, 1]])
-    
-        nvec_220 = (2 / np.sqrt(8)) * np.array([[1, 1, 0],
-                                                  [1, 0, 1],
-                                                  [0, 1, 1],
-                                                  [1, -1, 0],
-                                                  [1, 0, -1],
-                                                  [0, -1, 1]])
-        
-        nvec_311 = (1 / np.sqrt(11)) * np.array([[3, 1, 1],
-                                          [1, 3, 1],
-                                          [1, 1, 3],
-                                          [-3, 1, 1],
-                                          [1, -3, 1],
-                                          [1, 1, -3]])
    
     
         angles = []
-        for nvec in [nvec_111, nvec_200, nvec_220, nvec_311]:
+        for nvec in self.lattice_nvecs:
     
             rot_v1 = np.matmul(total_rot, nvec.T) # total rot matrix
             yax=np.array([[0,1,0]]).T
             angle = np.arccos(rot_v1/(np.linalg.norm(yax)*np.linalg.norm(rot_v1, axis=-2))[:, :, np.newaxis,:] )
             angles.append(angle)
         
-        self.rot_111, self.rot_200, self.rot_220, self.rot_311 = angles
-        
-        self.phi_111, self.phi_200, self.phi_220, self.phi_311 = self.rot_111[..., 1, :], self.rot_200[..., 1, :], self.rot_220[..., 1, :], self.rot_311[..., 1, :]
-        
+        self.lattice_rot = OrderedDict(zip(self.lattice_list, angles))
+        self.lattice_phi = OrderedDict(zip(self.lattice_list, [i[..., 1, :] for i in angles]))
 
 
     def calc_lattice_strain(self):
-        #r0, r1, r2 = self.phi_200[:, :, 0], self.phi_200[:, :, 1], self.phi_200[:, :, 2]
-
-        nvec_111 = (1 / np.sqrt(3)) * np.array([[1, 1, 1],
-                          [1, 1, -1],
-                          [1, -1, 1],
-                          [-1, 1, 1]])
-
-        nvec_200 = np.array([[1, 0, 0],
-                 [0, 1, 0],
-                 [0, 0, 1]])
-
-        nvec_220 = (2 / np.sqrt(8)) * np.array([[1, 1, 0],
-                                                  [1, 0, 1],
-                                                  [0, 1, 1],
-                                                  [1, -1, 0],
-                                                  [1, 0, -1],
-                                                  [0, -1, 1]])
-        
-        nvec_311 = (1 / np.sqrt(11)) * np.array([[3, 1, 1],
-                                          [1, 3, 1],
-                                          [1, 1, 3],
-                                          [-3, 1, 1],
-                                          [1, -3, 1],
-                                          [1, 1, -3]])
     
         ens = []
-        for nvec in [nvec_111, nvec_200, nvec_220, nvec_311]:
-            exx, eyy, ezz, exy, exz, eyz =self.lat
+        for nvec in self.lattice_nvecs:
+            exx, eyy, ezz, exy, exz, eyz =self.elastic
             eT = np.array([[exx, exy, exz],
                               [-exy, eyy, eyz],
                               [-exz, -eyz, ezz]])
@@ -183,8 +424,8 @@ class Load():
             en = en[:, :, :, 0, 0]
             
             ens.append(en)
-            
-        self.e_111, self.e_200, self.e_220, self.e_311 = ens
+        
+        self.lattice_strain = dict(zip(self.lattice_list, ens))
              
         
         
@@ -194,9 +435,9 @@ class Load():
 
 
         
-        for e_lat, phi, rot in zip([self.e_111, self.e_200, self.e_220, self.e_311],
-                              [self.phi_111, self.phi_200, self.phi_220, self.phi_311],
-                                   [self.rot_111, self.rot_200, self.rot_220, self.rot_311]):
+        for e_lat, phi, rot in zip(self.lattice_strain.values(),
+                                   self.lattice_phi.values(),
+                                   self.lattice_rot.values()):
                                        
         
         
@@ -210,79 +451,12 @@ class Load():
             tensors.append(e_tensor)
             tensors_err.append(e_tensor_err)
             
-        self.e_111_tensor, self.e_200_tensor, self.e_220_tensor, self.e_311_tensor = tensors
-        self.e_111_tensor_err, self.e_200_tensor_err, self.e_220_tensor_err, self.e_311_tensor_err = tensors_err
-        
-        
-    def plot_lattice_phi(self, lattice='200', frame=-1, alpha=0.1, restrict_z=True,
-                         restrict_range = [70, 110]):
-        
-        y = {'111':self.e_111,
-             '200':self.e_200,
-             '311':self.e_311,
-             '220':self.e_220}
-        
-        y_tensor = {'111':self.e_111_tensor,
-                    '200':self.e_200_tensor,
-                    '311':self.e_311_tensor,
-                    '220':self.e_220_tensor}
-        
-        x = {'111':self.phi_111,
-             '200':self.phi_200,
-             '311':self.phi_311,
-             '220':self.phi_220}
-        
-        rot = {'111':self.rot_111,
-             '200':self.rot_200,
-             '311':self.rot_311,
-             '220':self.rot_220}
+        self.lattice_tensor = OrderedDict(zip(self.lattice_list, tensors))
+        self.lattice_tensor_err = OrderedDict(zip(self.lattice_list, tensors_err))
 
-        
-        if restrict_z == True:
-            r0, r1 = restrict_range
-            t_z = rot[lattice][:, :, 2]* 180 / np.pi
-            va = np.logical_and(t_z > r0, t_z < r1)
-            print(np.sum(va))
-        else:
-            va = np.ones_like(rot[lattice][:, :, 2], dtype='bool')
-            
-        vaf = np.zeros_like(rot[lattice][:, :, 2], dtype='bool')
-        vaf[:, frame, :] += True
-        va = np.logical_and(va, vaf)
-        plt.plot(x[lattice][va].flatten(), y[lattice][va].flatten(), '.', alpha=alpha)
-        plt.plot(np.linspace(0, np.pi, 1001), strain_transformation(np.linspace(0, np.pi, 1001), *y_tensor[lattice][:, frame]), 'r')
     
     
-    def plot_lattice_select(self, lattice='200', y='stress', idx=1, 
-                            alpha=0.1, window=10, plot_select=True):
-        
-        
-        y_ = {'strain':self.e,
-             'stress':self.s}
-        
-        phi_ = {'111':self.phi_111,
-             '200':self.phi_200,
-             '311':self.phi_311,
-             '220':self.phi_220} 
-        
-        phi = phi_[lattice]
-        
-        if idx == 1:
-            va = np.argwhere(np.abs(phi[:, 94]*180/np.pi - 90)> 90 - window/2)
-        else:
-            va = np.argwhere(np.abs(phi[:, 94]*180/np.pi - 90) < window/2)
-            
-        
-        s = np.nanmean(y_[y], axis=1)[1]
-        if plot_select:
-            plt.plot(self.lat[idx].T[:, va[:, 0]], s, 'k', alpha=alpha)
-        plt.plot(np.nanmean(self.lat[idx].T[:, va[:, 0]], axis=1), s, label=lattice)
-    
-    def plot_lattice_all(self, y='stress', idx=1, alpha=0.1, window=10):
-        for lattice in ['111', '311', '220', '200']:
-            self.plot_lattice_select(lattice=lattice, y=y, idx=idx, 
-                            alpha=alpha, window=window, plot_select=False)
-        
+
 
 
 def trans_matrix(r0, r1, r2):
@@ -319,7 +493,28 @@ def trans_matrix(r0, r1, r2):
     return R
 
 
+nvec_111 = (1 / np.sqrt(3)) * np.array([[1, 1, 1],
+                  [1, 1, -1],
+                  [1, -1, 1],
+                  [-1, 1, 1]])
 
+nvec_200 = np.array([[1, 0, 0],
+                     [0, 1, 0],
+                     [0, 0, 1]])
+
+nvec_220 = (2 / np.sqrt(8)) * np.array([[1, 1, 0],
+                                          [1, 0, 1],
+                                          [0, 1, 1],
+                                          [1, -1, 0],
+                                          [1, 0, -1],
+                                          [0, -1, 1]])
+
+nvec_311 = (1 / np.sqrt(11)) * np.array([[3, 1, 1],
+                                          [1, 3, 1],
+                                          [1, 1, 3],
+                                          [-3, 1, 1],
+                                          [1, -3, 1],
+                                          [1, 1, -3]])
             
 
 def strain_transformation(phi, *p):
