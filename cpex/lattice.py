@@ -10,9 +10,12 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from collections import OrderedDict
 
+from cpex.nvec import nvec_extract
+from cpex.transformation import trans_matrix, strain_transformation
+
 class Load():
     
-    def __init__(self, fpath, calc=True):
+    def __init__(self, fpath, calc=True, lattice_list = ['111', '200', '220', '311']):
         data = np.load(fpath)
         self.e = data['e']
         self.s = data['s']
@@ -37,8 +40,8 @@ class Load():
             self.b_stress = np.zeros((12,) + d_shape)
             
         self.rot[:, :,0] = self.rot[:, :,1]
-        self.lattice_list = ['111', '200', '220', '311']
-        self.lattice_nvecs = [nvec_111, nvec_200, nvec_220, nvec_311]
+        self.lattice_list = lattice_list
+        self.lattice_nvecs = [nvec_extract(*[int(i) for i in hkl]) for hkl in self.lattice_list]
         
         if calc:
             print('Calculating lattice rotations and strains...')
@@ -147,8 +150,12 @@ class Load():
         
         y_ = {'lattice': lattice[family],
               'back stress': self.b_stress[idx]}[y]
-        
-        y_tensor = self.lattice_tensor[family]
+        try:
+            y_tensor = self.lattice_tensor[family]
+            tens = True
+        except KeyError:
+            print('Tensor not available')
+            tens=False
         
         if y == 'back stress':
             x = self.rot[1]
@@ -169,13 +176,12 @@ class Load():
             va = np.s_[:, frame]
 
         plt.plot(x[va].flatten(), y_[va].flatten(), '.', alpha=alpha)
-        if y == 'lattice':
+        if y == 'lattice' and tens:
             plt.plot(np.linspace(0, np.pi, 1001), strain_transformation(np.linspace(0, np.pi, 1001), *y_tensor[:, frame]), 'r')
         x = 'lattice rot (phi)' if y == 'lattice' else 'grain rot (phi)'
         plt.xlabel(x)
         plt.ylabel(y)
     
-
     
     def plot_grains(self, y='elastic', x='stress', x_mean=True, 
              y_mean=False, x_idx=1, y_idx=1, grain_idx=None, alpha=0.2,
@@ -229,12 +235,9 @@ class Load():
         """
         
         ax2_mean = False if ax2 in ['time', 'frame'] else ax2_mean
-        
-        
-        d = self.extract_grains(data=ax2, idx=ax2_idx, grain_idx=None)
-        
 
-        
+        d = self.extract_grains(data=ax2, idx=ax2_idx, grain_idx=None)
+
         valid, select = self.extract_phi_idx(family=family, phi=phi,window=window, frame=frame)
         if ax2 in ['time', 'frame']:
             d, dm = d, d
@@ -244,8 +247,6 @@ class Load():
             d = np.nanmean(d, axis=0) if ax2_mean else d[valid[:,0]].T
             dm = d if ax2_mean else np.nanmean(d, axis=1)
             
-            
-        
         lattice = self.extract_lattice(family=family)
         
         lattice = lattice[valid[:,0], :, valid[:,1]].T
@@ -270,6 +271,56 @@ class Load():
         ylabel = ax2 if lat_ax == 'x' else 'lattice'   
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
+        
+    def extract_lattice_strain_map(self, family='200', az_bins=19):
+        """
+        Effectively cake/average the data into the number of specified bins, 
+        return 2D array for family.
+        """
+        phi_steps = az_bins + 1
+        arr1 = np.moveaxis(self.lattice_strain[family], 1, 2)
+        arr1 = arr1.reshape((-1, arr1.shape[-1]))
+        
+        arr2 = np.moveaxis(self.lattice_phi[family], 1, 2)
+        arr2 = arr2.reshape((-1, arr2.shape[-1]))
+        arr2[arr2 > np.pi/2] -= np.pi # -90 to 90
+        
+        bins = np.linspace(-90, 90, phi_steps)
+        e_phi = np.nan * np.ones((phi_steps - 1, self.num_frames))
+        
+        for idx, i in enumerate(bins[:-1]):
+            va = np.logical_and(arr2 < bins[idx + 1] * np.pi / 180, arr2 > bins[idx] * np.pi / 180)
+            try:
+                e_phi[idx] = np.sum(arr1 * va, axis=0) / np.nansum(va, axis=0)
+            except ZeroDivisionError:
+                pass
+            
+        return (bins[:-1]+bins[1:])/2, e_phi
+        
+    def plot_lattice_strain_map(self, family='200', az_bins=19, ax2='time',
+                                ax2_idx=1):
+#    ax2='stress', ax2_idx=1, 
+#                                nstep=10, ax2_mean=True):
+#        
+        """
+        Plot 2D map of strain distribution wrt. phi and frame/time. 
+        """
+        
+        bin_c, e_phi = self.extract_lattice_strain_map(family=family, az_bins=az_bins)
+        
+        d = self.extract_grains(data=ax2, idx=ax2_idx, grain_idx=None)
+        ax2_mean = False if ax2 in ['time', 'frame'] else True
+        if ax2_mean:
+            d = np.nanmean(d, axis=0)
+        
+        time, phi = np.meshgrid(d, bin_c)
+        plt.contourf(time, phi, e_phi)
+        plt.colorbar()
+
+        ax2 = 'mean {} (idx={})'.format(ax2, ax2_idx) if ax2 not in ['time', 'frame'] else ax2
+
+        plt.xlabel(ax2)
+        plt.ylabel('phi (reflected at 0$^o$)')
             
     
     def plot_lattice_strain_all(self, lat_ax='x', ax2='stress', ax2_mean=True, 
@@ -433,14 +484,9 @@ class Load():
         
         tensors, tensors_err = [], []
 
-
-        
         for e_lat, phi, rot in zip(self.lattice_strain.values(),
                                    self.lattice_phi.values(),
                                    self.lattice_rot.values()):
-                                       
-        
-        
         
             e_tensor, e_tensor_err = np.zeros((3, self.num_frames)), np.zeros((3, self.num_frames))
             for idx in range(self.num_frames):
@@ -453,89 +499,10 @@ class Load():
             
         self.lattice_tensor = OrderedDict(zip(self.lattice_list, tensors))
         self.lattice_tensor_err = OrderedDict(zip(self.lattice_list, tensors_err))
-
-    
-    
-
-
-
-def trans_matrix(r0, r1, r2):
-    """ Creates a multidimensional transofrmation array from 3 rotational arrays:
-
-    Args:
-        phi (float, ndarray): Azimuthal angle (rad)
-        p[0] (float, ndarray): e_xx
-        p[1] (float, ndarray): e_yy
-        p[2] (float, ndarray): e_xy
-
-    Returns:
-        float, ndarray: Stress/strain wrt. azimuthal angle(s)
-    """            
-    zrot = np.array([np.stack([np.cos(r0), np.sin(r0), np.zeros_like(r0)]),
-           np.stack([-np.sin(r0), np.cos(r0), np.zeros_like(r0)]), 
-           np.stack([np.zeros_like(r0),np.zeros_like(r0),np.ones_like(r0)])])
-    
-    xrot = np.array([np.stack([np.ones_like(r1),np.zeros_like(r1),np.zeros_like(r1)]),
-           np.stack([np.zeros_like(r1), np.cos(r1),np.sin(r1)]),
-           np.stack([np.zeros_like(r1),-np.sin(r1), np.cos(r1)])])
-    
-    zrot2 = np.array([np.stack([np.cos(r2),np.sin(r2),np.zeros_like(r2)]),
-            np.stack([-np.sin(r2),np.cos(r2),np.zeros_like(r2)]),
-            np.stack([np.zeros_like(r2),np.zeros_like(r2),np.ones_like(r2)])])
-    
-    zrot = np.moveaxis(np.moveaxis(zrot, 0, -1), 0, -1)#.swapaxes(-1, -2)
-    xrot = np.moveaxis(np.moveaxis(xrot, 0, -1), 0, -1)# .swapaxes(-1, -2)
-    zrot2 = np.moveaxis(np.moveaxis(zrot2, 0, -1), 0, -1)#.swapaxes(-1, -2)
-            
-    R = np.matmul(np.matmul(zrot2,xrot),zrot)
-    
-    
-    return R
-
-
-nvec_111 = (1 / np.sqrt(3)) * np.array([[1, 1, 1],
-                  [1, 1, -1],
-                  [1, -1, 1],
-                  [-1, 1, 1]])
-
-nvec_200 = np.array([[1, 0, 0],
-                     [0, 1, 0],
-                     [0, 0, 1]])
-
-nvec_220 = (2 / np.sqrt(8)) * np.array([[1, 1, 0],
-                                          [1, 0, 1],
-                                          [0, 1, 1],
-                                          [1, -1, 0],
-                                          [1, 0, -1],
-                                          [0, -1, 1]])
-
-nvec_311 = (1 / np.sqrt(11)) * np.array([[3, 1, 1],
-                                          [1, 3, 1],
-                                          [1, 1, 3],
-                                          [-3, 1, 1],
-                                          [1, -3, 1],
-                                          [1, 1, -3]])
-            
-
-def strain_transformation(phi, *p):
-    """ Stress/strain (normal) transformation
-
-    Args:
-        phi (float, ndarray): Azimuthal angle (rad)
-        p[0] (float, ndarray): e_xx
-        p[1] (float, ndarray): e_yy
-        p[2] (float, ndarray): e_xy
-
-    Returns:
-        float, ndarray: Stress/strain wrt. azimuthal angle(s)
-    """
-    average = (p[0] + p[1]) / 2
-    radius = (p[0] - p[1]) / 2
-    return average + np.cos(2 * phi) * radius + p[2] * np.sin(2 * phi)
-    
+        
 if __name__ == '__main__':
     folder = os.path.join(os.path.dirname(__file__), r'data') # should be sub [0]
     fpath = os.path.join(folder, r'test_cpex.npz')
     data = Load(fpath)
     data.plot(x='strain', y='stress')
-    # data.plot(x='lattice', y='stress')
+
