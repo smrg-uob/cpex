@@ -40,7 +40,7 @@ cpex is built on Python's scientific stack (numpy, scipy, matplotlib). Testing a
 -	scipy: version 1.2.1
 -	matplotlib: version 3.0.3
 
-Backward compatability to Python 3.5 is likely but not guaranteed. 
+Backward compatability to Python 3.5 is likely but not guaranteed. Scraping functionality requires Abaqus.
 
 Installation
 ------------
