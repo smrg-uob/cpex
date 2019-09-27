@@ -226,7 +226,8 @@ class Load():
         grain_idx: int
             The index of the grain to search around
         data: str
-            The data label, either 'stress', 'strain', 'elastic' (strain)
+            The data to plot either 'stress', 'strain', 'elastic' (strain), 
+            'back stress'
         idx: int
             The orientation (referenced via an idx) of the defined data
             e.g. data='stress', idx=1 => sigma_yy
@@ -301,7 +302,7 @@ class Load():
         family: str
             The index of the grain to search around
         phi: float
-            The data label, either 'stress', 'strain', 'elastic' (strain),
+            The data to extractm either 'stress', 'strain', 'elastic' (strain),
             'back stress'
         window: float
             The orientation (referenced via an idx) of the defined data
@@ -409,7 +410,35 @@ class Load():
              y_mean=False, x_idx=1, y_idx=1, grain_idx=None, alpha=0.2,
              color='k', mcolor='r'):
         """
-        Plot grain specific information
+        The plot_grain method is very general plotting routing 
+        and any grain (not lattice) specific vaues can be plotted on 
+        either axis.
+
+        - Define data to plot on either axis i.e. y='stress', x='strain'
+        - Specify whether the data on given axis is the mean response of all grains
+        - Where relevant, the index of that data must be specified 
+        i.e. for y='stress', y_idx = 1 for sigma_yy
+        
+        While general a limited number of x, y combinations will, 
+        unsurprisingly, not work.
+        
+        Parameters
+        ----------
+        y, x: str, str
+            The data (label), either 'stress', 'strain', 'elastic' (strain),
+            'back stress', 'rot', 'time', 'frame' to plot on x/y axis
+        x_mean, y_mean: bool, bool
+            Whether to take the mean (across all grains) of the data on the
+            x/y axis
+        x_idx, y_idx: int, int
+            Component/orientation of the specified data to plot
+            e.g. x='stress', idx=1 => sigma_xx
+        grain_idx: [int, ...]
+            List on grains (indices) to plot (if None, all grains plotted)
+        alpha, color: float, str
+            Plotting options for the grain specific lines
+        mcolor:
+            The color of the grain average (across x and y) line
         """
         # If necessary put grain_idx into list for fancy indexing
         if isinstance(grain_idx, int):
@@ -447,20 +476,55 @@ class Load():
         plt.xlabel(x)
         
     
-    def plot_lattice_strain(self, lat_ax='x', ax2='stress', ax2_idx=1, ax2_mean=True, family='200', phi=0, 
-                     window=10, frame=0, alpha=0.2, color='k', mcolor='r',
-                     plot_select=True):
+    def plot_lattice_strain(self, family='200', phi=0, window=10, lat_ax='x', 
+                            ax2='stress', ax2_idx=1, ax2_mean=True,  
+                            alpha=0.2, color='k', mcolor='r',
+                            plot_select=True, phi_frame=0):
         
         """
-        Plot data for a specified family of lattice planes at a defined
-        azimuthal angle (angle wrt y axis)
+        The lattice strains for a given family are plotted if they lie at (or 
+        close to) an angle, phi (with the loading axis). The angular tolerance, 
+        or azimuthal window is defined by the user (windows). For XRD, a window 
+        of 10deg is often used.
+
+        Parameters:
+        -----------
+        family: str
+            The lattice plane family to assess
+        phi: float
+            Angle at which to extract the lattice plane strains
+        window: float
+            Azimuthal tolerance (absolute window width) for lattice data 
+            extraction
+        lat_ax: str
+            Axis to plot the lattice data on, either 'x' or 'y'
+        ax2: str
+            The data to plot against the lattice strain. Either 'stress', 
+            'strain', 'elastic' (strain), 'back stress'
+        ax2_idx: int
+            Component/orientation of the specified second axis data to plot
+            e.g. ax2='stress', ax2_idx=1 => sigma_xx
+        ax2_mean: bool
+            Whether to take the mean (across all grains) of the data on the
+            second axis
+        alpha, color: float, str
+            Plotting options for the grain specific lines
+        mcolor:
+            The color of the grain average (across x and y) line
+        plot_select: bool
+            If plot_select is True the individual lattice planes will be 
+            plotted in addition to the mean result, when False just the mean
+            response
+        phi_frame: int
+            The frame to define the grains that lie within the aimuthal
+            window (default = 0).
         """
         
         ax2_mean = False if ax2 in ['time', 'frame'] else ax2_mean
 
         d = self.extract_grains(data=ax2, idx=ax2_idx, grain_idx=None)
 
-        valid, select = self.extract_phi_idx(family=family, phi=phi,window=window, frame=frame)
+        valid, select = self.extract_phi_idx(family=family, phi=phi,window=window, frame=phi_frame)
         if ax2 in ['time', 'frame']:
             d, dm = d, d
             
