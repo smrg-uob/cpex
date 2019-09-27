@@ -321,7 +321,34 @@ class Load():
     
     def plot_phi(self, y='lattice', family='200', frame=-1, idx=0, 
                          alpha=0.1, restrict_z=False, restrict_range = [70, 110]):
+        """
+        For a given lattice family (and frame) plots the variation in the 
+        *resolved* lattice strain (or back stress) with respect to the angle 
+        the planes make to the loading axis (phi). Can be restricted across 
+        a smaller z_rot if required. N.b. rotations of grains defined as
+        (x_rot, phi, z_rot).
         
+        Parameters
+        ----------
+        y: str
+            The data to plot on the y axis. This is typically lattice strain
+            but it is also possible to plot wrt. back stress.
+        family: str
+            The lattice plane family to assess
+        frame: int
+            The frame to extract data from (default = 0).
+        idx: int
+            The compnent (referenced via an idx) of the defined data. Only 
+            valid for back stress (for fcc, idx = 0-11)
+        alpha: float
+            Plotting data transparency
+        restrict_z: bool
+            Restrict data extraction/plotting across one angular range. Can be 
+            used to normalise the amount of data wrt. phi
+        restrict_range: [float, float]
+            Range across which to limit z rotations.
+            
+        """
         lattice = self.lattice_strain
         
         y_ = {'lattice': lattice[family],
