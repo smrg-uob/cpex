@@ -146,7 +146,11 @@ def scrape_frames(frames, frame_step, num_grains, elementSets, N, step, bstress)
         
         co, la, ro = True, True, True
         try:
+            print(data_fo['COORD'])
             coords_ = data_fo['COORD']
+            # print(data_fo['COORD'])
+            
+            # myOdb.steps['Step-1'].frames[6].fieldOutputs['COORD'].getSubset(region=myInstance,position=NODAL)
         except:
             co = False
         # SDVs
