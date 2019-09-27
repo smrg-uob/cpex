@@ -52,8 +52,24 @@ class Load():
         
     def extract_grains(self, data='elastic', idx=1, grain_idx=None):
         """
-        Routine to extract information about some or all grains.
-        This is independent of lattice family.
+        Extracts data (stress, strain etc.) for either all grains, or a 
+        specified grain at a given (orthogonal) orientation or component
+        (where data='time', 'frame' etc. indexing does not work.
+        
+        Parameters
+        ----------
+        data: str
+            The data label, either 'stress', 'strain', 'elastic' (strain),
+            'back stress', 'rot', 'time', 'frame'
+        idx: int
+            The orientation (referenced via an idx) of the defined data
+            e.g. data='stress', idx=1 => sigma_yy
+        grain_idx: int
+            The index of the grain (note GRAIN-1 => idx=0)
+        Returns
+        -------
+        order: array
+            Dataset
         """
         if idx == None and grain_idx != None:
             idx = np.s_[:, grain_idx]
@@ -78,7 +94,144 @@ class Load():
             ex = d[data]
             
         return ex
+
     
+    def extract_neighbours_idx(self, grain_idx, frame=0):
+        """
+        Extracts the indinces of all grains ordered with respect to position 
+        away from a given grain (index).
+        
+        Grains move a small amount during deformation, the frame can be defined
+        to explicity interrogtae neightbours at a given load level/time.
+        
+        Parameters
+        ----------
+        grain_idx: int
+            The index of the grain to search around
+        frame: int, None
+            The frame to reference (default = 0). If None extracts ordered 
+            inidices for all frames.
+            
+        Returns
+        -------
+        order: list
+            Grain indices ordered by euclidean distance from selected grain
+        """
+        
+        if frame == None:
+            frame = np.s_[:]
+        dims = self.dims[:, :, frame]
+        rel_dims = dims - dims[:, grain_idx, None] # Keeps correct dimensionality
+        euc_dist = np.sum(rel_dims ** 2, axis=0)**0.5
+        
+        order = np.argsort(euc_dist, axis=0)
+        
+        return order[1:]
+    
+    
+    def extract_neighbours(self, grain_idx, data='strain', idx=1, frame=-1,
+                           cmean=False, dimframe='simple'):
+        """
+        Extracts data (stress, strain etc.) for all grains, with data being 
+        ordered with respect to position away from a given grain (index).
+
+        Calls extract_grains and extrains_neighbours_idx methods.
+        
+        Parameters
+        ----------
+        grain_idx: int
+            The index of the grain to search around
+        data: str
+            The data label, either 'stress', 'strain', 'elastic' (strain),
+            'back stress'
+        idx: int
+            The orientation (referenced via an idx) of the defined data
+            e.g. data='stress', idx=1 => sigma_yy
+        frame: int, None
+            The frame to reference (default = 0). If None extracts ordered 
+            data for all frames.
+        cmean: bool
+            Compute a rolling, cumulative mean
+        dimframe: str, int, None
+            If frame is not None then the neighbour ordering is done on same
+            frame. If frame is None then the dimensions are taken from the 
+            final frame or a specified frame (int) unless dimframes==None, in
+            which case neighbour ordering is done for each frame . Warning 
+            this is slow!
+            
+        Returns
+        -------
+        order: array
+            Ordered dataset
+        """
+        if frame==None:
+            frame=np.s_[:]
+            
+        
+        ex = self.extract_grains(data=data, idx=idx)
+        
+        if frame == np.s_[:] and dimframe !='simple':
+            # Not ideal!!!
+            order = self.extract_neighbours_idx(grain_idx, None)
+            ex_ordered = np.column_stack([i[j] for i, j in zip(np.split(ex, ex.shape[1], axis=1), 
+                                          np.split(order, order.shape[1], axis=1))]).squeeze()
+        
+        elif frame == np.s_[:] and isinstance(dimframe, int):
+            order = self.extract_neighbours_idx(grain_idx, dimframe)
+            ex_ordered = ex[order]
+        
+        else:
+            dimframe = frame if frame != np.s_[:] else -1
+            order = self.extract_neighbours_idx(grain_idx, dimframe)
+            # print(order)
+            ex_ordered = ex[order]
+            
+        if cmean:
+            ex_csum = np.cumsum(ex_ordered, axis=0) 
+            ex_cmean = ex_csum / np.arange(1, ex_csum.shape[0] + 1)[:, None]
+        
+            return ex_cmean[..., frame]
+        
+        return ex_ordered[..., frame]
+        
+        
+    def plot_neighbours(self, grain_idx, data='plastic', idx=1, frame=-1,
+                        cmean=True, ):
+        """
+        Plots data (stress, strain etc.) for all n grains, with data being 
+        ordered with respect to position away from a given grain (index).
+    
+        
+        Parameters
+        ----------
+        grain_idx: int
+            The index of the grain to search around
+        data: str
+            The data label, either 'stress', 'strain', 'elastic' (strain)
+        idx: int
+            The orientation (referenced via an idx) of the defined data
+            e.g. data='stress', idx=1 => sigma_yy
+        frame: int, None
+            The frame to reference (default = 0). If None extracts ordered 
+            data for all frames.
+        cmean: bool
+            Compute a rolling, cumulative mean
+        """
+        assert frame != None, "Can't study response across all frames."
+        
+        ex_ordered = self.extract_neighbours(grain_idx, data=data, 
+                                             idx=idx, frame=frame,
+                                             cmean=cmean)
+        
+        # Tinkering with axis labels
+        x = 'nth nearest neighbour'
+        y = 'cumulative mean {} (window=n)'.format(data) if cmean else data
+        
+        # Plotting
+        plt.plot(np.arange(1, np.size(ex_ordered) +1), ex_ordered, label=grain_idx)
+        plt.legend()
+        plt.ylabel(y)
+        plt.xlabel(x)
     
     def extract_lattice(self, data='lattice', family='311', 
                         grain_idx=None, plane_idx=None):
@@ -121,8 +274,31 @@ class Load():
             [grain_idx, frame_idx, plane_idx],
             ...]
             
-        In addition to the list of indices an equivalent boolean array is 
-        returned in each case.
+        ** In addition to the list of indices an equivalent boolean array is 
+        returned in each case. **
+        
+        Parameters
+        ----------
+        family: str
+            The index of the grain to search around
+        phi: float
+            The data label, either 'stress', 'strain', 'elastic' (strain),
+            'back stress'
+        window: float
+            The orientation (referenced via an idx) of the defined data
+            e.g. data='stress', idx=1 => sigma_yy
+        frame: int, None
+            The frame to reference (default = 0). If None extracts ordered 
+            data for all frames.
+            
+        Returns
+        -------
+        va: array (bool)
+            Boolean array of the same dimension as the lattice strain array -
+            elements are True if they are within the window, else False)
+        select: array (int)
+            A list of the grains/plane indices for all grains that lie within 
+            specified orientation/window combination.
             
         """
         if frame == None:
