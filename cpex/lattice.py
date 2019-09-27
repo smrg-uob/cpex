@@ -16,6 +16,25 @@ from cpex.transformation import trans_matrix, strain_transformation
 class Load():
     
     def __init__(self, fpath, calc=True, lattice_list = ['111', '200', '220', '311']):
+        """
+        Initialises the cpex Load class. Takes in a .npz file, pulls out the 
+        data and then performs initial calculations to find and resolve the
+        resolves strains for all lattice planes for lattice familieis specified
+        in the lattice list. 
+        
+        Parameters
+        ----------
+        fpath: str
+            Path to the .npz file
+        calc: bool
+            Auto run/call the lattice plane extraction and strain resolve.
+            Also fit an in-plane (x-y) tensor through the phi resolve lattice
+            strain data.
+        lattice_list: [str, str, str...]
+            List of all the lattice plane families of interest (for fcc this 
+            normally would be ['111', '200', '220', '311'])
+        
+        """
         data = np.load(fpath)
         self.e = data['e']
         self.s = data['s']
