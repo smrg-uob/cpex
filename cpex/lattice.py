@@ -256,9 +256,30 @@ class Load():
     def extract_lattice(self, data='lattice', family='311', 
                         grain_idx=None, plane_idx=None):
         """
-        Routine to extract information about some or all grains for a 
+        Routine to extract information about some or all (default) grains for a 
         specified lattice plane.
+
+        Parameters:
+        -----------
+        data: str
+            Either 'lattice' or 'phi'
+        family: str
+            The lattice plane family to assess
+        grain_idx: int, [int,...], None
+            If None then all grains of this family to be extracted else
+            the individual grain (or list of grains)
+        plane_idx: int, [int,...], None
+            If None then all planes of this family/grain combination to be 
+            extracted else the individual planes (or list of planes)
+            
+        Returns:
+        --------
+        data: array
+            Lattice strains (or phi) for given family (and potentially 
+            grain/plane specification)
         """
+        
+        
         if plane_idx == None and grain_idx != None:
             idx = np.s_[:, grain_idx]
         elif plane_idx == None and grain_idx == None:
@@ -483,8 +504,8 @@ class Load():
         
         """
         The lattice strains for a given family are plotted if they lie at (or 
-        close to) an angle, phi (with the loading axis). The angular tolerance, 
-        or azimuthal window is defined by the user (windows). For XRD, a window 
+        close to) an angle, phi (with the loading axis). The angular tolerance 
+        / azimuthal window is defined by the user (window). For XRD, a window 
         of 10deg is often used.
 
         Parameters:
@@ -558,11 +579,29 @@ class Load():
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
         
-    def extract_lattice_strain_map(self, family='200', az_bins=19):
+    def extract_lattice_map(self, family='200', az_bins=19):
         """
-        Effectively cake/average the data into the number of specified bins, 
-        return 2D array for family.
+        Average the lattice strains data across a defined number of bins 
+        (i.e.  azimuthally integrate), return 2D array of lattice strains against frame
+        for the specified family.
+
+        Parameters:
+        -----------
+        family: str
+            The lattice plane family to assess
+        az_bins: int
+            Number of bins to extract lattice strains across
+
+            
+        Returns:
+        --------
+        bins: list
+            List of the phi bins that data has been extracted at
+        data: array
+            Lattice strains for given family averaged across a user 
+            defined (az_bins) number of azimuthally arrayed bins
         """
+        
         phi_steps = az_bins + 1
         arr1 = np.moveaxis(self.lattice_strain[family], 1, 2)
         arr1 = arr1.reshape((-1, arr1.shape[-1]))
@@ -583,16 +622,39 @@ class Load():
             
         return (bins[:-1]+bins[1:])/2, e_phi
         
-    def plot_lattice_strain_map(self, family='200', az_bins=19, ax2='time',
+    def plot_lattice_map(self, family='200', az_bins=19, ax2='time',
                                 ax2_idx=1):
-#    ax2='stress', ax2_idx=1, 
-#                                nstep=10, ax2_mean=True):
-#        
+
         """
-        Plot 2D map of strain distribution wrt. phi and frame/time. 
+        Plot 2D map of the azimtuhally arrayed lattice strains as a function of 
+        second variable such as time or frame. Also works with macro stress
+        or strain although obvious issues may arise if there is creep dwells.
+
+
+        Parameters:
+        -----------
+        family: str
+            The lattice plane family to assess
+        az_bins: int
+            Number of bins to extract lattice strains across
+        ax2: str
+            The data to plot against the lattice strain. Either 'stress', 
+            'strain', 'elastic' (strain), 'back stress'
+        ax2_idx: int
+            Component/orientation of the specified second axis data to plot
+            e.g. ax2='stress', ax2_idx=1 => sigma_xx
+
+            
+        Returns:
+        --------
+        bins: list
+            List of the phi bins that data has been extracted at
+        data: array
+            Lattice strains for given family averaged across a user 
+            defined (az_bins) number of azimuthally arrayed bins
         """
         
-        bin_c, e_phi = self.extract_lattice_strain_map(family=family, az_bins=az_bins)
+        bin_c, e_phi = self.extract_lattice_map(family=family, az_bins=az_bins)
         
         d = self.extract_grains(data=ax2, idx=ax2_idx, grain_idx=None)
         ax2_mean = False if ax2 in ['time', 'frame'] else True
