@@ -497,7 +497,7 @@ class Load():
         plt.xlabel(x)
         
     
-    def plot_lattice_strain(self, family='200', phi=0, window=10, lat_ax='x', 
+    def plot_lattice(self, family='200', phi=0, window=10, lat_ax='x', 
                             ax2='stress', ax2_idx=1, ax2_mean=True,  
                             alpha=0.2, color='k', mcolor='r',
                             plot_select=True, phi_frame=0):
@@ -671,29 +671,85 @@ class Load():
         plt.ylabel('phi (reflected at 0$^o$)')
             
     
-    def plot_lattice_strain_all(self, lat_ax='x', ax2='stress', ax2_mean=True, 
-                                phi=0, window=10, frame=0, ax2_idx=1):
+    def plot_lattice_all(self, phi=0, window=10, lat_ax='x', ax2='stress', 
+                         ax2_idx=1, ax2_mean=True, phi_frame=0):
         """
-        Repeat plotting for all lattice plane families
+        The lattice strains for a ALL families are plotted if they lie at (or 
+        close to) an angle, phi (with the loading axis). The angular tolerance 
+        / azimuthal window is defined by the user (window). For XRD, a window 
+        of 10deg is often used.
+
+        Parameters:
+        -----------
+        phi: float
+            Angle at which to extract the lattice plane strains
+        window: float
+            Azimuthal tolerance (absolute window width) for lattice data 
+            extraction
+        lat_ax: str
+            Axis to plot the lattice data on, either 'x' or 'y'
+        ax2: str
+            The data to plot against the lattice strain. Either 'stress', 
+            'strain', 'elastic' (strain), 'back stress'
+        ax2_idx: int
+            Component/orientation of the specified second axis data to plot
+            e.g. ax2='stress', ax2_idx=1 => sigma_xx
+        ax2_mean: bool
+            Whether to take the mean (across all grains) of the data on the
+            second axis
+        phi_frame: int
+            The frame to define the grains that lie within the aimuthal
+            window (default = 0).
         """
         for family in self.lattice_list:
             try:
-                self.plot_lattice_strain(family=family, lat_ax=lat_ax, ax2=ax2, ax2_idx=ax2_idx, phi=phi, 
-                         window=window, frame=frame, plot_select=False, mcolor=None, ax2_mean=ax2_mean)
+                self.plot_lattice(family=family, lat_ax=lat_ax, ax2=ax2, ax2_idx=ax2_idx, phi=phi, 
+                         window=window, frame=phi_frame, plot_select=False, mcolor=None, ax2_mean=ax2_mean)
             except AssertionError:
                 print('Phi window too small for {} - no grains/planes selected'.format(family))
         plt.legend(self.lattice_list)
             
 
-    def plot_back_lattice(self, back_ax='y', b_idx=1, 
-                          ax2='stress', ax2_idx=1, 
-                          family='200', phi=0, window=10, frame=0, 
+    def plot_back_lattice(self, family='200', phi=0, window=10,
+                          back_ax='y', b_idx=1, ax2='stress', ax2_idx=1, 
                           alpha=0.2, color='k', mcolor='r',
-                          plot_select=True):
+                          plot_select=True, phi_frame=0):
         
         """
-        Plot back stress for a specified family of lattice planes at a defined
-        azimuthal angle (angle wrt y axis)
+        Plot a component of back stress for a specified family of lattice 
+        planes at a defined azimuthal angle. Plot against any other extracted 
+        stress, strain, time etc. component.
+        
+        Parameters:
+        -----------
+        family: str
+            The lattice plane family to assess
+        phi: float
+            Angle at which to extract the lattice plane strains
+        window: float
+            Azimuthal tolerance (absolute window width) for lattice data 
+            extraction    
+        back_ax: str
+            Axis to plot the lattice data on, either 'x' or 'y'
+        back_idx: int
+            Component of the back stress to plot (for fcc 0-11)
+        ax2: str
+            The data to plot against the lattice strain. Either 'stress', 
+            'strain', 'elastic' (strain), 'back stress'
+        ax2_idx: int
+            Component/orientation of the specified second axis data to plot
+            e.g. ax2='stress', ax2_idx=1 => sigma_xx
+        alpha, color: float, str
+            Plotting options for the grain specific lines
+        mcolor:
+            The color of the grain average (across x and y) line
+        plot_select: bool
+            If plot_select is True the individual lattice planes will be 
+            plotted in addition to the mean result, when False just the mean
+            response
+        phi_frame: int
+            The frame to define the grains that lie within the aimuthal
+            window (default = 0).
         """
         
         back = self.extract_grains(data='back stress', idx=b_idx, grain_idx=None)
@@ -702,7 +758,7 @@ class Load():
         d = d if ax2 in ['time', 'frame'] else np.nanmean(d, axis=0)
 
         
-        valid, select = self.extract_phi_idx(family=family, phi=phi,window=window, frame=frame)
+        valid, select = self.extract_phi_idx(family=family, phi=phi,window=window, frame=phi_frame)
         
         # back = back[valid[:,0], :, valid[:,1]].T
         v = np.unique(valid[:,0])
@@ -722,15 +778,49 @@ class Load():
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
             
-    def plot_active_slip(self, back_ax='y', b_active = 2,
-                          ax2='stress', ax2_idx=1, 
-                          family='200', phi=0, window=10, frame=0, 
-                          alpha=0.2, color='k', mcolor='r',
-                          plot_select=True):
+    def plot_active_slip(self, family='200', phi=0, window=10, 
+                         back_ax='y', b_active=2, ax2='stress', ax2_idx=1, 
+                         alpha=0.2, color='k', mcolor='r',
+                         plot_select=True, phi_frame=0):
         
         """
-        Plot back stress for a specified family of lattice planes at a defined
-        azimuthal angle (angle wrt y axis)
+        Plot the number of active slip systems for every plane for a specified 
+        family of lattice planes at a defined azimuthal angle (angle wrt y axis). 
+        Plotting is a function of time, frame, stress strain etc. The 
+        activation of a slip system is taken to occur when the absolute back
+        stress associated with that system (i.e. back stress component) rises 
+        above a user define value
+        
+        Parameters:
+        -----------
+        family: str
+            The lattice plane family to assess
+        phi: float
+            Angle at which to extract the lattice plane strains
+        window: float
+            Azimuthal tolerance (absolute window width) for lattice data 
+            extraction    
+        back_ax: str
+            Axis to plot the lattice data on, either 'x' or 'y'
+        b_active: int
+            Component of the back stress to plot (for fcc 0-11)
+        ax2: str
+            The data to plot against the lattice strain. Either 'stress', 
+            'strain', 'elastic' (strain), 'back stress'
+        ax2_idx: int
+            Component/orientation of the specified second axis data to plot
+            e.g. ax2='stress', ax2_idx=1 => sigma_xx
+        alpha, color: float, str
+            Plotting options for the grain specific lines
+        mcolor:
+            The color of the grain average (across x and y) line
+        plot_select: bool
+            If plot_select is True the individual lattice planes will be 
+            plotted in addition to the mean result, when False just the mean
+            response
+        phi_frame: int
+            The frame to define the grains that lie within the aimuthal
+            window (default = 0).
         """
         
         back = self.extract_grains(data='back stress', idx=None, grain_idx=None)
@@ -740,7 +830,7 @@ class Load():
         d = d if ax2 in ['time', 'frame'] else np.nanmean(d, axis=0)
 
         
-        valid, select = self.extract_phi_idx(family=family, phi=phi,window=window, frame=frame)
+        valid, select = self.extract_phi_idx(family=family, phi=phi,window=window, frame=phi_frame)
         
         # back = back[valid[:,0], :, valid[:,1]].T
         v = np.unique(valid[:,0])
@@ -764,16 +854,41 @@ class Load():
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
         
-    def plot_active_slip_all(self, back_ax='y', b_active = 2,
-                          ax2='stress', ax2_idx=1, 
-                          phi=0, window=10, frame=0):
+    def plot_active_slip_all(self, phi=0, window=10, back_ax='y', b_active = 2,
+                          ax2='stress', ax2_idx=1, phi_frame=0):
         """
-        Repeat plotting for all active slip systems
+        Plot the plane averaged number of active slip systems for all families 
+        of lattice planes at a defined azimuthal angle (angle wrt y axis). 
+        Plotting is a function of time, frame, stress strain etc. The 
+        activation of a slip system is taken to occur when the absolute back
+        stress associated with that system (i.e. back stress component) rises 
+        above a user define value
+        
+        Parameters:
+        -----------
+        phi: float
+            Angle at which to extract the lattice plane strains
+        window: float
+            Azimuthal tolerance (absolute window width) for lattice data 
+            extraction    
+        back_ax: str
+            Axis to plot the lattice data on, either 'x' or 'y'
+        b_active: int
+            Component of the back stress to plot (for fcc 0-11)
+        ax2: str
+            The data to plot against the lattice strain. Either 'stress', 
+            'strain', 'elastic' (strain), 'back stress'
+        ax2_idx: int
+            Component/orientation of the specified second axis data to plot
+            e.g. ax2='stress', ax2_idx=1 => sigma_xx
+        phi_frame: int
+            The frame to define the grains that lie within the aimuthal
+            window (default = 0).
         """
         for family in self.lattice_list:
             try:
                 self.plot_active_slip(family=family, back_ax=back_ax, ax2=ax2, ax2_idx=ax2_idx, phi=phi, 
-                         window=window, frame=frame, plot_select=False, mcolor=None)
+                         window=window, frame=phi_frame, plot_select=False, mcolor=None)
             except AssertionError:
                 print('Phi window too small for {} - no grains/planes selected'.format(family))
         plt.legend(self.lattice_list)
