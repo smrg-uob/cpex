@@ -13,61 +13,11 @@ from collections import OrderedDict
 from cpex.nvec import nvec_extract
 from cpex.transformation import trans_matrix, strain_transformation
 
-class Load():
+
+class Extract():
     
-    def __init__(self, fpath, calc=True, lattice_list = ['111', '200', '220', '311']):
-        """
-        Initialises the cpex Load class. Takes in a .npz file, pulls out the 
-        data and then performs initial calculations to find and resolve the
-        resolves strains for all lattice planes for lattice familieis specified
-        in the lattice list. 
-        
-        Parameters
-        ----------
-        fpath: str
-            Path to the .npz file
-        calc: bool
-            Auto run/call the lattice plane extraction and strain resolve.
-            Also fit an in-plane (x-y) tensor through the phi resolve lattice
-            strain data.
-        lattice_list: [str, str, str...]
-            List of all the lattice plane families of interest (for fcc this 
-            normally would be ['111', '200', '220', '311'])
-        
-        """
-        data = np.load(fpath)
-        self.e = data['e']
-        self.s = data['s']
-        self.elastic = data['lat']
-        self.dims = data['dims']
-        self.rot = data['rot']
-        self.v = data['v']
-        self.N = data['N']
-        self.num_frames = data['num_frames']
-        self.num_grains = data['num_grains']
-        try:
-            self.t = data['time']
-        except KeyError:
-            print('time not saved in file, creating zero array')
-            self.t = np.zeros((self.num_frames, ))
-            
-        try:
-            self.b_stress = data['b_stress']
-        except KeyError:
-            print('back stress not saved in file, creating zero array')
-            d_shape = (self.num_grains, self.num_frames)
-            self.b_stress = np.zeros((12,) + d_shape)
-            
-        self.rot[:, :,0] = self.rot[:, :,1]
-        self.lattice_list = lattice_list
-        self.lattice_nvecs = [nvec_extract(*[int(i) for i in hkl]) for hkl in self.lattice_list]
-        
-        if calc:
-            print('Calculating lattice rotations and strains...')
-            self.calc_lattice_rot()
-            self.calc_lattice_strain()
-            self.calc_lattice_tensor()
-        
+    def __init__():
+        pass
         
     def extract_grains(self, data='elastic', idx=1, grain_idx=None):
         """
@@ -893,6 +843,64 @@ class Load():
                 print('Phi window too small for {} - no grains/planes selected'.format(family))
         plt.legend(self.lattice_list)
 
+
+
+class Load(Extract):
+    
+    def __init__(self, fpath, calc=True, lattice_list = ['111', '200', '220', '311']):
+        """
+        Initialises the cpex Load class. Takes in a .npz file, pulls out the 
+        data and then performs initial calculations to find and resolve the
+        resolves strains for all lattice planes for lattice familieis specified
+        in the lattice list. 
+        
+        Parameters
+        ----------
+        fpath: str
+            Path to the .npz file
+        calc: bool
+            Auto run/call the lattice plane extraction and strain resolve.
+            Also fit an in-plane (x-y) tensor through the phi resolve lattice
+            strain data.
+        lattice_list: [str, str, str...]
+            List of all the lattice plane families of interest (for fcc this 
+            normally would be ['111', '200', '220', '311'])
+        
+        """
+        data = np.load(fpath)
+        self.e = data['e']
+        self.s = data['s']
+        self.elastic = data['lat']
+        self.dims = data['dims']
+        self.rot = data['rot']
+        self.v = data['v']
+        self.N = data['N']
+        self.num_frames = data['num_frames']
+        self.num_grains = data['num_grains']
+        try:
+            self.t = data['time']
+        except KeyError:
+            print('time not saved in file, creating zero array')
+            self.t = np.zeros((self.num_frames, ))
+            
+        try:
+            self.b_stress = data['b_stress']
+        except KeyError:
+            print('back stress not saved in file, creating zero array')
+            d_shape = (self.num_grains, self.num_frames)
+            self.b_stress = np.zeros((12,) + d_shape)
+            
+        self.rot[:, :,0] = self.rot[:, :,1]
+        self.lattice_list = lattice_list
+        self.lattice_nvecs = [nvec_extract(*[int(i) for i in hkl]) for hkl in self.lattice_list]
+        
+        if calc:
+            print('Calculating lattice rotations and strains...')
+            self.calc_lattice_rot()
+            self.calc_lattice_strain()
+            self.calc_lattice_tensor()
+            
+    
     def calc_lattice_rot(self):
         """
         Extracts all angles for FCC grain families. 
@@ -962,6 +970,7 @@ class Load():
             
         self.lattice_tensor = OrderedDict(zip(self.lattice_list, tensors))
         self.lattice_tensor_err = OrderedDict(zip(self.lattice_list, tensors_err))
+        
         
 if __name__ == '__main__':
     folder = os.path.join(os.path.dirname(__file__), r'data') # should be sub [0]
