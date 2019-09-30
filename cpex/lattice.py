@@ -704,7 +704,7 @@ class Load():
         for family in self.lattice_list:
             try:
                 self.plot_lattice(family=family, lat_ax=lat_ax, ax2=ax2, ax2_idx=ax2_idx, phi=phi, 
-                         window=window, frame=phi_frame, plot_select=False, mcolor=None, ax2_mean=ax2_mean)
+                         window=window, phi_frame=phi_frame, plot_select=False, mcolor=None, ax2_mean=ax2_mean)
             except AssertionError:
                 print('Phi window too small for {} - no grains/planes selected'.format(family))
         plt.legend(self.lattice_list)
