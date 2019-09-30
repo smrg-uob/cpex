@@ -11,7 +11,7 @@ from collections import OrderedDict
 
 from cpex.nvec import nvec_extract
 from cpex.transformation import trans_matrix, strain_transformation
-from cprex.extract import Extract
+from cpex.extract import Extract
 
 
 class Load(Extract):
