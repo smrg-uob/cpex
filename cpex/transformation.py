@@ -5,7 +5,7 @@ Created on Thu Sep 12 19:34:24 2019
 @author: cs17809
 """
 import numpy as np
-from scipy.optimize import curve_fit
+
 
 def trans_matrix(r0, r1, r2):
     """ Creates a multidimensional transofrmation array from 3 rotational arrays:
