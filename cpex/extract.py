@@ -6,6 +6,7 @@ Created on Mon Sep 30 13:23:53 2019
 """
 
 import numpy as np
+import csv
 import matplotlib.pyplot as plt
 from cpex.transformation import strain_transformation
 
@@ -422,6 +423,18 @@ class Extract():
         x_ = self.extract_grains(data=x, idx=x_idx, grain_idx=grain_idx)
         y_ = self.extract_grains(data=y, idx=y_idx, grain_idx=grain_idx)
 
+		csvfile=open('strain_grain.csv','w', newline='')
+        obj=csv.writer(csvfile)
+        for val in np.transpose(x_):
+            obj.writerow(val)
+        csvfile.close()
+        
+        csvfile=open('stress_grain.csv','w', newline='')
+        obj=csv.writer(csvfile)
+        for val in np.transpose(y_):
+            obj.writerow(val)
+        csvfile.close()
+		
         # Calculate mean of arrays
         xm = np.nanmean(x_, axis=0) if x not in ['time', 'frame'] else x_
         ym = np.nanmean(y_, axis=0) if y not in ['time', 'frame'] else y_
