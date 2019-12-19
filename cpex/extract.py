@@ -12,7 +12,7 @@ from cpex.transformation import strain_transformation
 
 class Extract():
     
-    def __init__():
+    def __init__(self):
         pass
         
     def extract_grains(self, data='elastic', idx=1, grain_idx=None):
@@ -423,14 +423,15 @@ class Extract():
         x_ = self.extract_grains(data=x, idx=x_idx, grain_idx=grain_idx)
         y_ = self.extract_grains(data=y, idx=y_idx, grain_idx=grain_idx)
 
-		csvfile=open('strain_grain.csv','w', newline='')
-        obj=csv.writer(csvfile)
+        # Saving x, y locations (?)
+        csvfile = open('strain_grain.csv', 'w', newline='')
+        obj = csv.writer(csvfile)
         for val in np.transpose(x_):
             obj.writerow(val)
         csvfile.close()
         
-        csvfile=open('stress_grain.csv','w', newline='')
-        obj=csv.writer(csvfile)
+        csvfile = open('stress_grain.csv', 'w', newline='')
+        obj = csv.writer(csvfile)
         for val in np.transpose(y_):
             obj.writerow(val)
         csvfile.close()
