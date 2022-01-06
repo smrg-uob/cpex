@@ -28,6 +28,16 @@ This is consistent with the approach used for the pyXe strain analysis software 
 
 Example Usage
 -------------
+### Scraping data
+Firstly, once the odb file has been generated, the data can be scraped using the *scrape.py* in this repo and the following convention:
+
+abaqus python scrape.py -f '/path/to/odbfile.odb'
+
+### Using CPEX functions
+Once the odb file has been scrapped (*npz*), the data can be loaded using the approach provided in the example Jupyter Notebook provided in this repo (*cpex Example_*)
+
+### Saving orientations
+It is important that the orientations are saved from the UMAT as state variables: Nx32 + 3, Nx32 + 6, where N in this case is 12 (FCC slip systems).
 
 
 Requirements
